@@ -36,6 +36,21 @@ describe('claim intake helpers', () => {
     });
   });
 
+  it('routes unsupported delivery and social claims into manual review', () => {
+    expect(
+      inferClaimFromVisitorTranscript(['I am from Amazon', 'delivery for this apartment']),
+    ).toMatchObject({
+      signature: 'unsupported',
+      claim: 'I am from Amazon delivery for this apartment',
+    });
+
+    expect(
+      inferClaimFromVisitorTranscript(['I am visiting a friend']),
+    ).toMatchObject({
+      signature: 'unsupported',
+    });
+  });
+
   it('requires a stronger inspection signal than the word inspection alone', () => {
     expect(inferClaimFromVisitorTranscript(['inspection today for 4B'])).toBeNull();
     expect(

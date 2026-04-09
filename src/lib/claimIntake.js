@@ -63,7 +63,8 @@ export const agentRequestedIdReview = (text = '') => {
 };
 
 export const inferClaimFromVisitorTranscript = (messages) => {
-  const combinedText = normalizeConversationText(buildVisitorClaimSummary(messages));
+  const summary = buildVisitorClaimSummary(messages);
+  const combinedText = normalizeConversationText(summary);
   if (!combinedText) {
     return null;
   }
@@ -112,6 +113,25 @@ export const inferClaimFromVisitorTranscript = (messages) => {
       claim: 'City inspector requesting building access',
       signature: 'inspector',
       fingerprint: fingerprint('inspector'),
+    };
+  }
+
+  if (
+    combinedText.includes('amazon')
+    || combinedText.includes('delivery')
+    || combinedText.includes('deliver')
+    || combinedText.includes('package')
+    || combinedText.includes('uber eats')
+    || combinedText.includes('uber east')
+    || combinedText.includes('food')
+    || combinedText.includes('friend')
+    || combinedText.includes('guest')
+    || combinedText.includes('visitor')
+  ) {
+    return {
+      claim: summary,
+      signature: 'unsupported',
+      fingerprint: fingerprint('unsupported'),
     };
   }
 
