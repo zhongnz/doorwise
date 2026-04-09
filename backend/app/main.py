@@ -273,6 +273,23 @@ def find_trusted_organization_match(organization_name: str, candidates: List[str
     return ""
 
 
+def find_trusted_organization_claim_match(claim: str, context: Dict[str, Any]) -> str:
+    normalized_claim = normalize_text(claim)
+    if not normalized_claim:
+        return ""
+
+    for candidate in list(context.get("trusted_id_organizations", [])):
+        normalized_candidate = normalize_text(candidate)
+        candidate_abbreviation = abbreviation_for_text(candidate)
+        if (
+            (normalized_candidate and normalized_candidate in normalized_claim)
+            or (candidate_abbreviation and candidate_abbreviation in normalized_claim)
+        ):
+            return candidate
+
+    return ""
+
+
 def text_values_overlap(left: str, right: str) -> bool:
     normalized_left = normalize_text(left)
     normalized_right = normalize_text(right)
@@ -575,6 +592,27 @@ def build_management_playbook(claim: str, context: Dict[str, Any], results_by_ke
     )
 
 
+def build_trusted_id_playbook(claim: str, context: Dict[str, Any], results_by_key: Dict[str, QueryResult]) -> Dict[str, Any]:
+    organization_match = find_trusted_organization_claim_match(claim, context)
+
+    return build_response_payload(
+        decision="CALL_TO_CONFIRM",
+        confidence="medium",
+        playbook="trusted-id",
+        reasoning=(
+            f'The claim mentions trusted organization "{organization_match}", so DoorWise should verify a visible ID '
+            "before any access decision."
+        ),
+        recommended_script=f'Please hold your {organization_match} ID to the camera or upload a clear image now.',
+        recommended_action="Capture or upload the ID image before allowing entry.",
+        escalation_contact=build_escalation_contact(
+            context,
+            "No building callback number is configured. Use a known building contact if the ID remains unclear.",
+        ),
+        results=[result for result in results_by_key.values() if result],
+    )
+
+
 def build_unknown_playbook(context: Dict[str, Any], results_by_key: Dict[str, QueryResult]) -> Dict[str, Any]:
     return build_response_payload(
         decision="DO_NOT_OPEN",
@@ -639,6 +677,8 @@ def generate_playbook_response(claim: str, context: Dict[str, Any], results_by_k
         return build_contractor_playbook(claim, context, results_by_key)
     if playbook == "management":
         return build_management_playbook(claim, context, results_by_key)
+    if find_trusted_organization_claim_match(claim, context):
+        return build_trusted_id_playbook(claim, context, results_by_key)
     return build_unknown_playbook(context, results_by_key)
 
 
@@ -679,7 +719,7 @@ def apply_id_review_policy(review: Dict[str, Any], playbook: str, context: Dict[
         review["policy_script"] = "Please wait while I confirm your ID details with building staff."
         review["policy_confidence"] = "medium" if document_present else "low"
 
-    review["policy_playbook"] = playbook
+    review["policy_playbook"] = "trusted-id"
     return review
 
 

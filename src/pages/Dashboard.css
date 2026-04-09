@@ -471,6 +471,12 @@
   border: 1px solid var(--border-glass);
 }
 
+.id-review-banner {
+  background: rgba(0, 212, 255, 0.08);
+  border-color: rgba(0, 212, 255, 0.24);
+  color: #c9f4ff;
+}
+
 .id-review-header {
   display: flex;
   justify-content: space-between;

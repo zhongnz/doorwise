@@ -1,6 +1,6 @@
 # DoorWise
 
-DoorWise is a voice-first access verification product for NYC multifamily housing. It helps residents and building staff decide whether to open the door when someone claims to be from management, inspection, or repair.
+DoorWise is a voice-first access verification product for NYC multifamily housing. It helps residents and building staff decide whether to open the door when someone claims to be from management, inspection, repair, or a building-approved organization that should be checked by ID.
 
 It gives you one place to:
 
@@ -110,7 +110,7 @@ SOCRATA_APP_TOKEN=optional_token_here
 
 - Voice is the primary experience in the product story, while text remains the fallback path when microphone access or live connectivity is unavailable.
 - The camera view is a live preview only in the current MVP; it does not run person detection continuously.
-- DoorWise currently supports three playbooks: inspector, contractor, and management access requests.
+- DoorWise currently supports three core playbooks: inspector, contractor, and management access requests, plus trusted-organization ID review when the building config allows it.
 - Gemini ID review is supporting evidence first, but it can trigger a building-defined trusted-ID policy when you configure allowed organizations such as NYU.
 - If Google AI Studio free-tier quota is exhausted, DoorWise falls back to a safe manual-review response instead of crashing the ID workflow.
 - Browser alerts are supported today; a dedicated phone notification path is still future work.

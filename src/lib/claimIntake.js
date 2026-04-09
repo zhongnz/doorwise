@@ -43,6 +43,25 @@ export const agentRequestedVerification = (text = '') => {
   );
 };
 
+export const agentRequestedIdReview = (text = '') => {
+  const normalized = normalizeConversationText(text);
+  if (!normalized) {
+    return false;
+  }
+
+  return (
+    normalized.includes('hold your id')
+    || normalized.includes('hold up your id')
+    || normalized.includes('show your id')
+    || normalized.includes('show me your badge')
+    || normalized.includes('show me your id')
+    || normalized.includes('hold that id')
+    || normalized.includes('upload your id')
+    || normalized.includes('hold that badge')
+    || normalized.includes('show your badge')
+  );
+};
+
 export const inferClaimFromVisitorTranscript = (messages) => {
   const combinedText = normalizeConversationText(buildVisitorClaimSummary(messages));
   if (!combinedText) {

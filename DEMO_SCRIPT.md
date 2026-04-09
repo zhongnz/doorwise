@@ -21,12 +21,14 @@ Use the built-in demo building in setup:
 - management phone: `212-555-0100`
 - super phone: `646-555-0111`
 - approved vendors: `Ace Plumbing, BrightWire Electric`
+- trusted ID organizations: `New York University, NYU`
 
 Current live backend behavior for that setup:
 
 - management claim: `DO_NOT_OPEN`
 - inspector claim: `DO_NOT_OPEN`
 - contractor claim with `Ace Plumbing`: `CALL_TO_CONFIRM`
+- trusted NYU claim: `CALL_TO_CONFIRM`, then `PROCEED_AFTER_ID_CHECK` after a matching ID review
 - unsupported delivery claim: `DO_NOT_OPEN`
 
 That is okay for the demo. It reinforces that DoorWise is a verification layer, not a novelty chatbot that blindly approves entry.
@@ -44,7 +46,7 @@ Say:
 On the setup page:
 
 - click `Use Demo Building`
-- point out the building contacts and approved vendors
+- point out the building contacts, approved vendors, and trusted ID organizations
 
 Say:
 
@@ -105,11 +107,35 @@ Say:
 
 `DoorWise is intentionally conservative. If it cannot confirm the management claim through the available records, it tells the resident not to open and to verify through a trusted callback path.`
 
-### 6. Close with the product thesis
+### 6. Show the trusted-ID flow
+
+Click `Next Visitor`.
+
+Use voice if the room is quiet. If not, type the claim.
+
+Claim:
+
+`I'm with NYU and I'm going to class.`
+
+What should happen now:
+
+- DoorWise should steer toward ID review instead of a generic unsupported-claim loop.
+- The decision panel should guide you to capture or upload the ID.
+- Then use `Upload ID Image` or `Capture Frame` with a clear NYU badge image.
+
+Expected result after the ID review:
+
+- `PROCEED AFTER ID CHECK`
 
 Say:
 
-`DoorWise is not an intercom company and not a general AI concierge. It is the verification layer before entry for management, inspection, and repair visits in multifamily housing.`
+`This shows the second trust path in DoorWise. Public records are not the only signal. If the building defines a trusted organization, DoorWise can require a visible badge, extract the details, and then upgrade the decision without pretending it verified the person by face.`
+
+### 7. Close with the product thesis
+
+Say:
+
+`DoorWise is not an intercom company and not a general AI concierge. It is the verification layer before entry for management, inspection, repair, and trusted-ID access in multifamily housing.`
 
 ## Live Demo Tips
 
@@ -125,6 +151,7 @@ Recommended:
 
 - `Hi, I'm with Ace Plumbing. I'm here for a repair.`
 - `Jay Street Management is here for unit access.`
+- `I'm with NYU and I'm going to class.`
 
 Avoid:
 

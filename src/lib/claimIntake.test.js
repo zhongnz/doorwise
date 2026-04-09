@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  agentRequestedIdReview,
   agentRequestedVerification,
   buildVisitorClaimSummary,
   inferClaimFromVisitorTranscript,
@@ -56,5 +57,11 @@ describe('claim intake helpers', () => {
     expect(agentRequestedVerification('Thanks, hold on a moment.')).toBe(true);
     expect(agentRequestedVerification('Please wait while I check.')).toBe(true);
     expect(agentRequestedVerification('What company are you with?')).toBe(false);
+  });
+
+  it('detects when the agent has asked for an ID or badge', () => {
+    expect(agentRequestedIdReview('Please hold your ID to the camera.')).toBe(true);
+    expect(agentRequestedIdReview('Show me your badge.')).toBe(true);
+    expect(agentRequestedIdReview('What company are you with?')).toBe(false);
   });
 });

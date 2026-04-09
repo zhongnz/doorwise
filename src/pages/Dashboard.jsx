@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { useVoice } from '../hooks/useVoice';
 import {
+  agentRequestedIdReview,
   agentRequestedVerification,
   buildVisitorClaimSummary,
   inferClaimFromVisitorTranscript,
@@ -68,6 +69,33 @@ const idAlignmentLabels = {
   partial: 'Partially matches',
   mismatch: 'Does not match',
   unclear: 'Unclear match',
+};
+
+const abbreviationForText = (value = '') => normalizeConversationText(value)
+  .split(' ')
+  .filter((word) => word && !['of', 'the', 'and'].includes(word))
+  .map((word) => word[0])
+  .join('');
+
+const findTrustedOrganizationCandidate = (claimText, organizations = []) => {
+  const normalizedClaim = normalizeConversationText(claimText);
+  if (!normalizedClaim) {
+    return '';
+  }
+
+  for (const organization of organizations) {
+    const normalizedOrganization = normalizeConversationText(organization);
+    const organizationAbbreviation = abbreviationForText(organization);
+
+    if (
+      (normalizedOrganization && normalizedClaim.includes(normalizedOrganization))
+      || (organizationAbbreviation && normalizedClaim.includes(organizationAbbreviation))
+    ) {
+      return organization;
+    }
+  }
+
+  return '';
 };
 
 const mergeTranscriptText = (previousText, nextText) => {
@@ -178,6 +206,7 @@ const Dashboard = () => {
   const [idReview, setIdReview] = useState(null);
   const [idReviewState, setIdReviewState] = useState('idle');
   const [idReviewError, setIdReviewError] = useState('');
+  const [idReviewPrompt, setIdReviewPrompt] = useState('');
   const [notificationPermission, setNotificationPermission] = useState(
     typeof Notification === 'undefined' ? 'unsupported' : Notification.permission,
   );
@@ -253,6 +282,7 @@ const Dashboard = () => {
     setIdReview(null);
     setIdReviewError('');
     setIdReviewState('idle');
+    setIdReviewPrompt('');
   };
 
   const resetSession = () => {
@@ -420,6 +450,8 @@ const Dashboard = () => {
     setConfidence(reviewPayload.policy_confidence || confidence || 'medium');
     setRecommendedAction(reviewPayload.policy_action || recommendedAction);
     setRecommendedScript(reviewPayload.policy_script || recommendedScript);
+    setPlaybook(reviewPayload.policy_playbook || 'trusted-id');
+    setIdReviewPrompt('');
     setDecisionReasoning((previous) => {
       const policyReasoning = reviewPayload.policy_reasoning || '';
       if (!policyReasoning) {
@@ -484,6 +516,9 @@ const Dashboard = () => {
       setMatchedRecords(data.matched_records || []);
       setConfidence(data.confidence || '');
       setPlaybook(data.playbook || '');
+      setIdReviewPrompt(data.playbook === 'trusted-id'
+        ? 'DoorWise needs a clear ID image before it can finish this trusted-organization decision.'
+        : '');
       appendTranscript({ role: 'agent', text: data.recommended_action || data.reasoning });
       saveIncident(claim, data);
     } catch (error) {
@@ -497,6 +532,7 @@ const Dashboard = () => {
       setMatchedRecords([]);
       setConfidence('low');
       setPlaybook('manual-review');
+      setIdReviewPrompt('');
       appendTranscript({ role: 'agent', text: 'DoorWise could not complete the verification request.' });
     }
   };
@@ -516,9 +552,19 @@ const Dashboard = () => {
       .find((message) => message.role === 'agent');
 
     const inferredClaim = inferClaimFromVisitorTranscript(visitorMessages);
+    const trustedOrganizationCandidate = findTrustedOrganizationCandidate(
+      visitorClaimSummary,
+      buildingContext.trusted_id_organizations,
+    );
+    const lastAgentAskedForId = Boolean(lastAgentMessage && agentRequestedIdReview(lastAgentMessage.text));
     const voiceCompletionFingerprint = visitorClaimSummary
       ? `voice:${normalizeConversationText(visitorClaimSummary)}`
       : '';
+    const waitingForTrustedId = Boolean(
+      trustedOrganizationCandidate
+      && visitorClaimSummary
+      && (lastAgentAskedForId || playbook === 'trusted-id'),
+    );
     const shouldVerifyVoiceClaim = Boolean(
       lastAgentMessage
       && agentRequestedVerification(lastAgentMessage.text)
@@ -527,8 +573,34 @@ const Dashboard = () => {
     );
     const autoFingerprint = inferredClaim?.fingerprint;
 
-    if (!shouldVerifyVoiceClaim && !inferredClaim) {
+    if (waitingForTrustedId) {
+      setClaimInput(visitorClaimSummary);
+      setCurrentClaim(visitorClaimSummary);
+      setPlaybook('trusted-id');
+      setIdReviewPrompt(`Trusted organization detected: ${trustedOrganizationCandidate}. Capture or upload the ID to continue.`);
+    } else if (idReviewPrompt) {
+      setIdReviewPrompt('');
+    }
+
+    if (!shouldVerifyVoiceClaim && !inferredClaim && !waitingForTrustedId) {
       return;
+    }
+
+    if (waitingForTrustedId && shouldVerifyVoiceClaim) {
+      if (autoVerifyTimeoutRef.current) {
+        window.clearTimeout(autoVerifyTimeoutRef.current);
+      }
+
+      autoVerifyTimeoutRef.current = window.setTimeout(() => {
+        lastAutoClaimSignatureRef.current = voiceCompletionFingerprint;
+        void triggerVerification(visitorClaimSummary);
+      }, 900);
+
+      return () => {
+        if (autoVerifyTimeoutRef.current) {
+          window.clearTimeout(autoVerifyTimeoutRef.current);
+        }
+      };
     }
 
     if (!shouldVerifyVoiceClaim && autoFingerprint && lastAutoClaimSignatureRef.current === autoFingerprint) {
@@ -559,7 +631,7 @@ const Dashboard = () => {
         window.clearTimeout(autoVerifyTimeoutRef.current);
       }
     };
-  }, [address, status, transcript]);
+  }, [address, buildingContext.trusted_id_organizations, idReviewPrompt, playbook, status, transcript]);
 
   const handleClaimSubmit = async (event) => {
     event.preventDefault();
@@ -903,6 +975,13 @@ const Dashboard = () => {
             </div>
 
             <div className="id-review-card">
+              {idReviewPrompt ? (
+                <div className="dashboard-banner id-review-banner">
+                  <Camera size={16} />
+                  <span>{idReviewPrompt}</span>
+                </div>
+              ) : null}
+
               <div className="id-review-header">
                 <div>
                   <strong>ID Review</strong>

@@ -300,6 +300,30 @@ class DoorWiseApiTests(unittest.TestCase):
         self.assertEqual(payload["organization_name"], "Ace Plumbing")
         self.assertEqual(payload["source"], "upload")
 
+    def test_verify_endpoint_routes_trusted_organization_claims_to_id_review(self):
+        response = self.client.post(
+            "/api/verify",
+            json={
+                "address": {
+                    "houseNumber": "370",
+                    "street": "Jay St",
+                    "borough": "Brooklyn",
+                    "apartment": "317",
+                },
+                "visitor_claim": "I'm with NYU and I'm going to class.",
+                "building_context": {
+                    "trusted_id_organizations": ["NYU", "New York University"],
+                    "management_phone": "212-555-0100",
+                },
+            },
+        )
+
+        payload = response.json()
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(payload["decision"], "CALL_TO_CONFIRM")
+        self.assertEqual(payload["playbook"], "trusted-id")
+        self.assertIn("trusted organization", payload["reasoning"].lower())
+
     @patch("backend.app.main.review_supporting_id", new_callable=AsyncMock)
     def test_review_id_endpoint_can_promote_trusted_organization_ids(self, review_supporting_id):
         review_supporting_id.return_value = {
