@@ -59,12 +59,15 @@ Copy `.env.example` to `.env` and fill in the values you need:
 GOOGLE_API_KEY=your_key_here
 GEMINI_LIVE_MODEL=gemini-2.5-flash-native-audio-latest
 GEMINI_VISION_MODEL=gemini-2.5-flash-lite
+GEMINI_TRANSCRIPTION_LANGUAGE_CODES=en-US
 SOCRATA_APP_TOKEN=optional_token_here
 BUILDING_MANAGEMENT_PHONE=optional_phone_here
 BUILDING_SUPER_PHONE=optional_phone_here
 APPROVED_VENDORS=optional,comma,separated,vendors
 TRUSTED_ID_ORGANIZATIONS=New York University,NYU
 ```
+
+`GEMINI_TRANSCRIPTION_LANGUAGE_CODES` defaults to `en-US` so live transcripts stay English-biased unless you intentionally override it.
 
 ## Production build
 

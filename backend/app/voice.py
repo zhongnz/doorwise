@@ -39,6 +39,13 @@ def normalize_model_name(model_name: str | None) -> str:
 
 
 MODEL_ID = normalize_model_name(os.getenv("GEMINI_LIVE_MODEL"))
+DEFAULT_TRANSCRIPTION_LANGUAGE_CODES = ["en-US"]
+
+
+def load_transcription_language_codes() -> list[str]:
+    raw_value = os.getenv("GEMINI_TRANSCRIPTION_LANGUAGE_CODES", "")
+    configured_codes = [code.strip() for code in raw_value.split(",") if code.strip()]
+    return configured_codes or DEFAULT_TRANSCRIPTION_LANGUAGE_CODES
 
 async def receive_from_client(websocket: WebSocket, session):
     """Receive audio from the React frontend and send to Gemini"""
@@ -207,10 +214,12 @@ async def websocket_endpoint(websocket: WebSocket):
     - If the visitor is clearly outside the supported categories and no trusted organization policy applies, ask them to restate the company or agency and purpose plainly once, then stop with "DoorWise only verifies building-related access. Thanks, hold on a moment."
     """
     
+    transcription_language_codes = load_transcription_language_codes()
+
     config = types.LiveConnectConfig(
         response_modalities=["AUDIO"],
-        input_audio_transcription=types.AudioTranscriptionConfig(),
-        output_audio_transcription=types.AudioTranscriptionConfig(),
+        input_audio_transcription=types.AudioTranscriptionConfig(language_codes=transcription_language_codes),
+        output_audio_transcription=types.AudioTranscriptionConfig(language_codes=transcription_language_codes),
         system_instruction=types.Content(parts=[types.Part.from_text(text=system_instruction)])
     )
 

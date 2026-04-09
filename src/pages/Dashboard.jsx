@@ -907,12 +907,22 @@ const Dashboard = () => {
           </div>
 
           <div className="transcript-area">
-            {transcript.map((message, index) => (
-              <div key={`${message.role}-${index}`} className={`msg-bubble ${message.role}`}>
-                <div className="msg-sender">{message.role === 'agent' ? 'DoorWise' : 'Visitor'}</div>
-                <div className="msg-text">{message.text}</div>
-              </div>
-            ))}
+            {transcript.map((message, index) => {
+              const isPartial = message.finished === false;
+
+              return (
+                <div
+                  key={`${message.role}-${index}`}
+                  className={`msg-bubble ${message.role}${isPartial ? ' partial' : ''}`}
+                >
+                  <div className="msg-sender">
+                    {message.role === 'agent' ? 'DoorWise' : 'Visitor'}
+                    {isPartial ? <span className="msg-status">Listening...</span> : null}
+                  </div>
+                  <div className="msg-text">{message.text}</div>
+                </div>
+              );
+            })}
           </div>
 
           <div className="audio-visualizer">
