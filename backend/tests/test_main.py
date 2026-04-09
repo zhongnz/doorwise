@@ -1,4 +1,5 @@
 import unittest
+import base64
 from unittest.mock import AsyncMock, patch
 
 from fastapi.testclient import TestClient
@@ -253,6 +254,51 @@ class DoorWiseApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(payload["decision"], "CALL_TO_CONFIRM")
         self.assertEqual(payload["playbook"], "management")
+
+    @patch("backend.app.main.review_supporting_id", new_callable=AsyncMock)
+    def test_review_id_endpoint_returns_structured_gemini_evidence(self, review_supporting_id):
+        review_supporting_id.return_value = {
+            "document_present": True,
+            "document_type": "company_id",
+            "person_name": "Alex Rivera",
+            "organization_name": "Ace Plumbing",
+            "role_title": "Technician",
+            "badge_or_employee_id": "A-117",
+            "apartment_or_unit": None,
+            "expiration_date": None,
+            "claim_alignment": "partial",
+            "evidence_quality": "usable",
+            "reasoning": "The badge shows Ace Plumbing, which supports the contractor claim.",
+            "recommended_action": "Treat this as supporting evidence only and still call building staff.",
+            "model": "gemini-2.5-flash",
+        }
+
+        response = self.client.post(
+            "/api/review-id",
+            json={
+                "address": {
+                    "houseNumber": "370",
+                    "street": "Jay St",
+                    "borough": "Brooklyn",
+                    "apartment": "317",
+                },
+                "visitor_claim": "Ace Plumbing contractor here for a repair",
+                "building_context": {
+                    "management_phone": "212-555-0100",
+                    "approved_vendors": ["Ace Plumbing"],
+                },
+                "mime_type": "image/jpeg",
+                "image_base64": base64.b64encode(b"fake-image-bytes").decode("utf-8"),
+                "source": "upload",
+            },
+        )
+
+        payload = response.json()
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(payload["claim_type"], "contractor")
+        self.assertEqual(payload["claim_alignment"], "partial")
+        self.assertEqual(payload["organization_name"], "Ace Plumbing")
+        self.assertEqual(payload["source"], "upload")
 
 
 if __name__ == "__main__":

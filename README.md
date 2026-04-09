@@ -15,6 +15,7 @@ It gives you one place to:
 - FastAPI backend with city-record check and playbook-driven verification endpoints
 - Browser camera preview when permissions are available
 - Gemini Live websocket integration as the primary claim-intake path, with text fallback
+- Optional Gemini ID review from an uploaded image or captured camera frame
 - Browser notification support for final verdict alerts
 - Local incident log for recent verification decisions
 - Static frontend serving from FastAPI for single-container deployment
@@ -57,6 +58,7 @@ Copy `.env.example` to `.env` and fill in the values you need:
 ```bash
 GOOGLE_API_KEY=your_key_here
 GEMINI_LIVE_MODEL=gemini-2.5-flash-native-audio-latest
+GEMINI_VISION_MODEL=gemini-2.5-flash
 SOCRATA_APP_TOKEN=optional_token_here
 BUILDING_MANAGEMENT_PHONE=optional_phone_here
 BUILDING_SUPER_PHONE=optional_phone_here
@@ -106,7 +108,9 @@ SOCRATA_APP_TOKEN=optional_token_here
 ## Current limitations
 
 - Voice is the primary experience in the product story, while text remains the fallback path when microphone access or live connectivity is unavailable.
+- The camera view is a live preview only in the current MVP; it does not run person detection continuously.
 - DoorWise currently supports three playbooks: inspector, contractor, and management access requests.
+- Gemini ID review is supporting evidence only, not standalone authorization to open the door.
 - Browser alerts are supported today; a dedicated phone notification path is still future work.
 - Building callback numbers and approved vendors are only used when you configure them in setup or environment variables.
 

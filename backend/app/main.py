@@ -1,4 +1,6 @@
 import asyncio
+import base64
+import binascii
 import os
 import re
 from datetime import date
@@ -15,6 +17,7 @@ ROOT_DIR = Path(__file__).resolve().parents[2]
 load_dotenv(ROOT_DIR / ".env")
 
 from .building_context import contact_lines, merge_building_context  # noqa: E402
+from .id_review import review_supporting_id  # noqa: E402
 from .nyc_data import (  # noqa: E402
     QueryResult,
     check_dob_now_approved_permits,
@@ -70,6 +73,15 @@ class VerificationRequest(BaseModel):
     address: AddressInput
     visitor_claim: str
     building_context: Optional[BuildingContextInput] = None
+
+
+class IdReviewRequest(BaseModel):
+    address: AddressInput
+    visitor_claim: str
+    mime_type: str
+    image_base64: str
+    building_context: Optional[BuildingContextInput] = None
+    source: Optional[str] = None
 
 
 def format_address(address: AddressInput) -> str:
@@ -595,6 +607,13 @@ def generate_playbook_response(claim: str, context: Dict[str, Any], results_by_k
     return build_unknown_playbook(context, results_by_key)
 
 
+def decode_image_payload(image_base64: str) -> bytes:
+    try:
+        return base64.b64decode(image_base64, validate=True)
+    except (ValueError, binascii.Error) as exc:
+        raise ValueError("The uploaded image could not be decoded.") from exc
+
+
 @app.get("/api/health")
 async def health_check() -> Dict[str, str]:
     return {"status": "healthy", "service": "DoorWise Backend"}
@@ -636,6 +655,35 @@ async def verify_visitor(req: VerificationRequest) -> Dict[str, Any]:
             }
         )
         return response
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.post("/api/review-id")
+async def review_uploaded_id(req: IdReviewRequest) -> Dict[str, Any]:
+    try:
+        building_context = merge_building_context(req.building_context.model_dump() if req.building_context else None)
+        playbook = classify_claim(req.visitor_claim)
+        image_bytes = decode_image_payload(req.image_base64)
+        review = await review_supporting_id(
+            image_bytes=image_bytes,
+            mime_type=req.mime_type,
+            visitor_claim=req.visitor_claim,
+            playbook=playbook,
+            address_label=format_address(req.address),
+            building_context=building_context,
+        )
+
+        return {
+            **review,
+            "claim_type": playbook,
+            "address_label": format_address(req.address),
+            "source": req.source or "upload",
+        }
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 

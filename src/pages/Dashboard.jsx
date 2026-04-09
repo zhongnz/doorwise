@@ -5,6 +5,7 @@ import {
   AlertTriangle,
   Bell,
   BellRing,
+  Camera,
   CheckCircle2,
   Database,
   MapPin,
@@ -14,6 +15,7 @@ import {
   ShieldAlert,
   ShieldCheck,
   ShieldX,
+  Upload,
   Video,
 } from 'lucide-react';
 import { useVoice } from '../hooks/useVoice';
@@ -58,6 +60,13 @@ const decisionLabels = {
   CALL_TO_CONFIRM: 'Call To Confirm',
   DO_NOT_OPEN: 'Do Not Open',
   UNKNOWN: 'Manual Review',
+};
+
+const idAlignmentLabels = {
+  match: 'Matches claim',
+  partial: 'Partially matches',
+  mismatch: 'Does not match',
+  unclear: 'Unclear match',
 };
 
 const mergeTranscriptText = (previousText, nextText) => {
@@ -112,6 +121,7 @@ const loadStoredJson = (key, fallback) => {
 const Dashboard = () => {
   const navigate = useNavigate();
   const videoRef = useRef(null);
+  const idFileInputRef = useRef(null);
   const cameraStreamRef = useRef(null);
   const lastAutoClaimSignatureRef = useRef('');
   const autoVerifyTimeoutRef = useRef(null);
@@ -135,6 +145,9 @@ const Dashboard = () => {
   const [incidentLog, setIncidentLog] = useState([]);
   const [cameraReady, setCameraReady] = useState(false);
   const [cameraError, setCameraError] = useState('');
+  const [idReview, setIdReview] = useState(null);
+  const [idReviewState, setIdReviewState] = useState('idle');
+  const [idReviewError, setIdReviewError] = useState('');
   const [notificationPermission, setNotificationPermission] = useState(
     typeof Notification === 'undefined' ? 'unsupported' : Notification.permission,
   );
@@ -206,6 +219,9 @@ const Dashboard = () => {
     setMatchedRecords([]);
     setConfidence('');
     setPlaybook('');
+    setIdReview(null);
+    setIdReviewError('');
+    setIdReviewState('idle');
   };
 
   const resetSession = () => {
@@ -359,7 +375,7 @@ const Dashboard = () => {
 
     setIncidentLog((previous) => {
       const nextLog = [nextEntry, ...previous].slice(0, 6);
-      localStorage.setItem(storageKeys.incidents[0], JSON.stringify(nextLog));
+      localStorage.setItem(storageKeys.incidents, JSON.stringify(nextLog));
       return nextLog;
     });
   };
@@ -530,6 +546,133 @@ const Dashboard = () => {
     });
   };
 
+  const readFileAsDataUrl = (file) => new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error('DoorWise could not read that image.'));
+    reader.readAsDataURL(file);
+  });
+
+  const getClaimContext = () => {
+    const typedClaim = claimInput.trim();
+    if (typedClaim) {
+      return typedClaim;
+    }
+
+    if (currentClaim) {
+      return currentClaim;
+    }
+
+    const visitorMessages = transcript
+      .filter((message) => message.role === 'visitor' && message.text && message.finished !== false)
+      .map((message) => message.text);
+
+    return buildVisitorClaimSummary(visitorMessages);
+  };
+
+  const parseDataUrl = (dataUrl) => {
+    const matches = String(dataUrl).match(/^data:(.+);base64,(.+)$/);
+    if (!matches) {
+      throw new Error('DoorWise could not parse that image.');
+    }
+
+    return {
+      mimeType: matches[1],
+      imageBase64: matches[2],
+    };
+  };
+
+  const runIdReview = async ({ dataUrl, source }) => {
+    const claim = getClaimContext();
+    if (!claim) {
+      setIdReviewError('Capture or enter a visitor claim before reviewing an ID.');
+      return;
+    }
+
+    try {
+      setIdReviewState('reviewing');
+      setIdReviewError('');
+      const { mimeType, imageBase64 } = parseDataUrl(dataUrl);
+
+      const response = await fetch('/api/review-id', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          address,
+          visitor_claim: claim,
+          building_context: buildingContext,
+          mime_type: mimeType,
+          image_base64: imageBase64,
+          source,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorPayload = await response.json().catch(() => ({}));
+        throw new Error(errorPayload.detail || 'DoorWise could not review that ID image.');
+      }
+
+      const data = await response.json();
+      setIdReview(data);
+    } catch (error) {
+      setIdReview(null);
+      setIdReviewError(error.message || 'DoorWise could not review that ID image.');
+    } finally {
+      setIdReviewState('idle');
+    }
+  };
+
+  const handleOpenIdUpload = () => {
+    idFileInputRef.current?.click();
+  };
+
+  const handleIdFileChange = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+
+    if (!file) {
+      return;
+    }
+
+    if (!file.type.startsWith('image/')) {
+      setIdReviewError('Please choose an image file for ID review.');
+      return;
+    }
+
+    if (file.size > 6 * 1024 * 1024) {
+      setIdReviewError('Please choose an ID image smaller than 6 MB.');
+      return;
+    }
+
+    try {
+      const dataUrl = await readFileAsDataUrl(file);
+      await runIdReview({ dataUrl, source: 'upload' });
+    } catch (error) {
+      setIdReviewError(error.message || 'DoorWise could not read that image.');
+    }
+  };
+
+  const handleCaptureIdFrame = async () => {
+    if (!videoRef.current || !cameraReady) {
+      setIdReviewError('Camera preview is not available yet.');
+      return;
+    }
+
+    const canvas = document.createElement('canvas');
+    canvas.width = videoRef.current.videoWidth || 1280;
+    canvas.height = videoRef.current.videoHeight || 720;
+    const context = canvas.getContext('2d');
+
+    if (!context) {
+      setIdReviewError('DoorWise could not capture a frame from the camera.');
+      return;
+    }
+
+    context.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+    await runIdReview({ dataUrl, source: 'camera_capture' });
+  };
+
   if (!address) {
     return null;
   }
@@ -541,6 +684,7 @@ const Dashboard = () => {
     || buildingContext.super_phone
     || buildingContext.approved_vendors?.length,
   );
+  const claimContext = getClaimContext();
 
   return (
     <div className="dashboard-container">
@@ -592,13 +736,15 @@ const Dashboard = () => {
           <div className="camera-feed" onClick={resumeCameraPlayback}>
             {cameraReady ? <video ref={videoRef} autoPlay muted playsInline className="camera-video" /> : <div className="camera-bg"></div>}
             <div className="vision-overlay">
-              <div className="bounding-box">
-                <span className="label">{cameraReady ? 'Visitor detected' : 'Camera offline'}</span>
+              <div className="camera-frame">
+                <span className="label">{cameraReady ? 'Live preview' : 'Camera offline'}</span>
               </div>
             </div>
             <div className="feed-timestamp">{new Date().toLocaleTimeString()} • Front Door</div>
           </div>
-          {cameraError ? <div className="panel-note">{cameraError}</div> : null}
+          <div className="panel-note">
+            {cameraError || 'Camera preview is for visual confirmation only. Gemini document review runs only when you capture or upload an ID image.'}
+          </div>
         </div>
 
         <div className="panel transcript-panel glass-panel">
@@ -691,6 +837,98 @@ const Dashboard = () => {
                 {notificationPermission === 'granted' ? <BellRing size={16} /> : <Bell size={16} />}
                 {notificationPermission === 'granted' ? 'Browser Alerts Enabled' : 'Enable Browser Alerts'}
               </button>
+            </div>
+
+            <div className="id-review-card">
+              <div className="id-review-header">
+                <div>
+                  <strong>ID Review</strong>
+                  <p>Capture or upload a work badge or ID. Gemini extracts visible fields and compares them with the current claim.</p>
+                </div>
+                <span className="meta-pill">Supporting evidence only</span>
+              </div>
+
+              <input
+                ref={idFileInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleIdFileChange}
+                className="hidden-input"
+              />
+
+              <div className="id-review-actions">
+                <button
+                  type="button"
+                  className="btn-secondary id-review-button"
+                  onClick={handleCaptureIdFrame}
+                  disabled={!cameraReady || !claimContext || idReviewState === 'reviewing'}
+                >
+                  <Camera size={16} />
+                  Capture Frame
+                </button>
+                <button
+                  type="button"
+                  className="btn-secondary id-review-button"
+                  onClick={handleOpenIdUpload}
+                  disabled={!claimContext || idReviewState === 'reviewing'}
+                >
+                  <Upload size={16} />
+                  Upload ID Image
+                </button>
+              </div>
+
+              <div className="id-review-helper">
+                {claimContext
+                  ? `Current claim for ID review: ${claimContext}`
+                  : 'Capture or enter a visitor claim first. ID review compares the image against that claim.'}
+              </div>
+
+              {idReviewState === 'reviewing' ? (
+                <div className="id-review-status">Reviewing the document with Gemini...</div>
+              ) : null}
+
+              {idReviewError ? <div className="id-review-error">{idReviewError}</div> : null}
+
+              {idReview ? (
+                <div className="id-review-result">
+                  <div className={`id-review-summary ${idReview.claim_alignment}`}>
+                    <strong>{idAlignmentLabels[idReview.claim_alignment] || 'ID review complete'}</strong>
+                    <span>{idReview.reasoning}</span>
+                  </div>
+
+                  <div className="id-review-grid">
+                    <div className="id-review-field">
+                      <span>Document type</span>
+                      <strong>{idReview.document_type || 'unknown'}</strong>
+                    </div>
+                    <div className="id-review-field">
+                      <span>Organization</span>
+                      <strong>{idReview.organization_name || 'Not clearly readable'}</strong>
+                    </div>
+                    <div className="id-review-field">
+                      <span>Name</span>
+                      <strong>{idReview.person_name || 'Not clearly readable'}</strong>
+                    </div>
+                    <div className="id-review-field">
+                      <span>Badge / employee ID</span>
+                      <strong>{idReview.badge_or_employee_id || 'Not clearly readable'}</strong>
+                    </div>
+                    <div className="id-review-field">
+                      <span>Image quality</span>
+                      <strong>{idReview.evidence_quality || 'unknown'}</strong>
+                    </div>
+                    <div className="id-review-field">
+                      <span>Model</span>
+                      <strong>{idReview.model}</strong>
+                    </div>
+                  </div>
+
+                  <div className="id-review-recommendation">
+                    <strong>Document review action</strong>
+                    <p>{idReview.recommended_action}</p>
+                  </div>
+                </div>
+              ) : null}
             </div>
 
             <div className="action-grid">

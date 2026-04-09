@@ -62,6 +62,10 @@ Say:
 
 `Voice is the primary intake path, but text remains available as a fallback. The important output is here on the right: why, what to say, what to do, and who to call.`
 
+If helpful, point out the new `ID Review` block and say:
+
+`The camera preview is for visual confirmation, and Gemini can review a captured or uploaded badge as supporting evidence.`
+
 ### 4. Run the strongest live-safe scenario
 
 Use voice if the room is quiet. If not, type the claim.
