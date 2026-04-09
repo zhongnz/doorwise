@@ -7,7 +7,11 @@ from google import genai
 from google.genai import types
 from pydantic import BaseModel, Field
 
-DEFAULT_VISION_MODEL = "gemini-2.5-flash"
+DEFAULT_VISION_MODEL = "gemini-2.5-flash-lite"
+VISION_MODEL_FALLBACKS = [
+    "gemini-2.5-flash-lite",
+    "gemini-2.5-flash",
+]
 
 
 def get_api_key() -> Optional[str]:
@@ -19,6 +23,17 @@ def get_vision_model() -> str:
     if configured.startswith("models/"):
         return configured.removeprefix("models/")
     return configured
+
+
+def vision_model_candidates() -> list[str]:
+    configured = get_vision_model()
+    candidates: list[str] = []
+    for candidate in [configured, *VISION_MODEL_FALLBACKS]:
+        normalized = candidate.strip()
+        if not normalized or normalized in candidates:
+            continue
+        candidates.append(normalized)
+    return candidates
 
 
 class IdReviewResult(BaseModel):
@@ -86,7 +101,7 @@ def build_retry_prompt() -> str:
     )
 
 
-def fallback_review(*, model_name: str, message: str) -> Dict[str, Any]:
+def fallback_review(*, model_name: str, message: str, quota_exhausted: bool = False) -> Dict[str, Any]:
     result = IdReviewResult(
         document_present=False,
         document_type="unknown",
@@ -104,7 +119,19 @@ def fallback_review(*, model_name: str, message: str) -> Dict[str, Any]:
     payload = result.model_dump()
     payload["model"] = model_name
     payload["fallback_used"] = True
+    if quota_exhausted:
+        payload["quota_exhausted"] = True
     return payload
+
+
+def is_quota_exhausted_error(error: Exception) -> bool:
+    text = str(error).lower()
+    return (
+        "resource_exhausted" in text
+        or "quota exceeded" in text
+        or "rate limit" in text
+        or "429" in text
+    )
 
 
 def coerce_review_result(response: Any, model_name: str) -> Dict[str, Any]:
@@ -148,47 +175,67 @@ def _review_supporting_id_sync(
         address_label=address_label,
         building_context=building_context,
     )
-    model_name = get_vision_model()
-
     with genai.Client(api_key=api_key) as client:
-        response = client.models.generate_content(
-            model=model_name,
-            contents=[
-                prompt,
-                types.Part.from_bytes(data=image_bytes, mime_type=mime_type),
-            ],
-            config=types.GenerateContentConfig(
-                response_mime_type="application/json",
-                response_schema=IdReviewResult,
-                temperature=0.1,
-                max_output_tokens=500,
-            ),
-        )
-        try:
-            return coerce_review_result(response, model_name)
-        except Exception:
-            retry_response = client.models.generate_content(
-                model=model_name,
-                contents=[
-                    f"{prompt}\n\n{build_retry_prompt()}",
-                    types.Part.from_bytes(data=image_bytes, mime_type=mime_type),
-                ],
-                config=types.GenerateContentConfig(
-                    response_mime_type="application/json",
-                    response_schema=IdReviewResult,
-                    temperature=0.0,
-                    max_output_tokens=350,
-                ),
-            )
+        last_error: Optional[Exception] = None
+
+        for model_name in vision_model_candidates():
             try:
-                payload = coerce_review_result(retry_response, model_name)
-                payload["fallback_used"] = True
-                return payload
-            except Exception:
-                return fallback_review(
-                    model_name=model_name,
-                    message="Gemini could not return a reliable structured document review for this image.",
+                response = client.models.generate_content(
+                    model=model_name,
+                    contents=[
+                        prompt,
+                        types.Part.from_bytes(data=image_bytes, mime_type=mime_type),
+                    ],
+                    config=types.GenerateContentConfig(
+                        response_mime_type="application/json",
+                        response_schema=IdReviewResult,
+                        temperature=0.1,
+                        max_output_tokens=500,
+                    ),
                 )
+                try:
+                    return coerce_review_result(response, model_name)
+                except Exception:
+                    retry_response = client.models.generate_content(
+                        model=model_name,
+                        contents=[
+                            f"{prompt}\n\n{build_retry_prompt()}",
+                            types.Part.from_bytes(data=image_bytes, mime_type=mime_type),
+                        ],
+                        config=types.GenerateContentConfig(
+                            response_mime_type="application/json",
+                            response_schema=IdReviewResult,
+                            temperature=0.0,
+                            max_output_tokens=350,
+                        ),
+                    )
+                    try:
+                        payload = coerce_review_result(retry_response, model_name)
+                        payload["fallback_used"] = True
+                        return payload
+                    except Exception:
+                        return fallback_review(
+                            model_name=model_name,
+                            message="Gemini could not return a reliable structured document review for this image.",
+                        )
+            except Exception as exc:
+                last_error = exc
+                if is_quota_exhausted_error(exc):
+                    continue
+                raise
+
+        exhausted_model = vision_model_candidates()[0]
+        if last_error and is_quota_exhausted_error(last_error):
+            return fallback_review(
+                model_name=exhausted_model,
+                message=(
+                    "Gemini ID review is temporarily unavailable because the current API quota is exhausted. "
+                    "Try again later, switch to a different model, or enable billing in Google AI Studio."
+                ),
+                quota_exhausted=True,
+            )
+
+        raise last_error or RuntimeError("Gemini could not review the uploaded image.")
 
 
 async def review_supporting_id(

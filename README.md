@@ -58,7 +58,7 @@ Copy `.env.example` to `.env` and fill in the values you need:
 ```bash
 GOOGLE_API_KEY=your_key_here
 GEMINI_LIVE_MODEL=gemini-2.5-flash-native-audio-latest
-GEMINI_VISION_MODEL=gemini-2.5-flash
+GEMINI_VISION_MODEL=gemini-2.5-flash-lite
 SOCRATA_APP_TOKEN=optional_token_here
 BUILDING_MANAGEMENT_PHONE=optional_phone_here
 BUILDING_SUPER_PHONE=optional_phone_here
@@ -112,6 +112,7 @@ SOCRATA_APP_TOKEN=optional_token_here
 - The camera view is a live preview only in the current MVP; it does not run person detection continuously.
 - DoorWise currently supports three playbooks: inspector, contractor, and management access requests.
 - Gemini ID review is supporting evidence first, but it can trigger a building-defined trusted-ID policy when you configure allowed organizations such as NYU.
+- If Google AI Studio free-tier quota is exhausted, DoorWise falls back to a safe manual-review response instead of crashing the ID workflow.
 - Browser alerts are supported today; a dedicated phone notification path is still future work.
 - Building callback numbers, approved vendors, and trusted ID organizations are only used when you configure them in setup or environment variables.
 

@@ -59,6 +59,7 @@ def emit(key: str, value: str) -> None:
 
 emit("GOOGLE_API_KEY", os.environ["GOOGLE_API_KEY"])
 emit("GEMINI_LIVE_MODEL", os.environ.get("GEMINI_LIVE_MODEL", "gemini-2.5-flash-native-audio-latest"))
+emit("GEMINI_VISION_MODEL", os.environ.get("GEMINI_VISION_MODEL", "gemini-2.5-flash-lite"))
 
 token = os.environ.get("SOCRATA_APP_TOKEN", "").strip()
 if token and not token.lower().startswith("your_") and token.lower() not in {"optional_token_here", "none"}:
