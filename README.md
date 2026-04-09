@@ -117,6 +117,10 @@ SOCRATA_APP_TOKEN=optional_token_here
 - mobile push or SMS alerts
 - deeper property-management integrations
 
-## License
+## Demo
 
-MIT
+For a live investor or customer walkthrough, use the guided script in [DEMO_SCRIPT.md](/home/ptz/dev/DoorGuard-NYC/DEMO_SCRIPT.md).
+
+## Proprietary Notice
+
+DoorWise is proprietary and confidential. See [LICENSE](/home/ptz/dev/DoorGuard-NYC/LICENSE) for the current repository terms.
