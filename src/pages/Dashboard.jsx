@@ -119,6 +119,35 @@ const loadStoredJson = (key, fallback) => {
   }
 };
 
+const buildVoiceContext = (address, buildingContext) => {
+  const trustedOrganizations = (buildingContext?.trusted_id_organizations || []).filter(Boolean);
+  const approvedVendors = (buildingContext?.approved_vendors || []).filter(Boolean);
+  const parts = [
+    'System note for DoorWise only. Use this silently and do not read it aloud.',
+  ];
+
+  if (address?.label) {
+    parts.push(`Building address: ${address.label}.`);
+  }
+
+  if (buildingContext?.building_name) {
+    parts.push(`Building name: ${buildingContext.building_name}.`);
+  }
+
+  if (trustedOrganizations.length) {
+    parts.push(`Trusted organizations allowed by visible ID policy: ${trustedOrganizations.join(', ')}.`);
+    parts.push(
+      'If a visitor says they are from one of those organizations for class, work, school, or campus access, ask them to hold that ID to the camera instead of repeating the same company question.',
+    );
+  }
+
+  if (approvedVendors.length) {
+    parts.push(`Approved vendors on file: ${approvedVendors.join(', ')}.`);
+  }
+
+  return parts.join(' ');
+};
+
 const Dashboard = () => {
   const navigate = useNavigate();
   const videoRef = useRef(null);
@@ -153,6 +182,7 @@ const Dashboard = () => {
     typeof Notification === 'undefined' ? 'unsupported' : Notification.permission,
   );
   const sessionLocked = terminalDecisions.includes(status);
+  const voiceContext = buildVoiceContext(address, buildingContext);
 
   const appendTranscript = (message) => {
     setTranscript((previous) => {
@@ -207,7 +237,7 @@ const Dashboard = () => {
     if (event.kind === 'turn_complete') {
       setTranscript((previous) => finalizeTranscriptMessages(previous));
     }
-  }, { pauseInput: status === 'VERIFYING' || sessionLocked });
+  }, { pauseInput: status === 'VERIFYING' || sessionLocked, initialContext: voiceContext });
 
   const clearDecisionOutcome = () => {
     setStatus('LISTENING');

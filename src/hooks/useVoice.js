@@ -20,6 +20,7 @@ export function useVoice(onEvent, options = {}) {
   const isPlayingRef = useRef(false);
   const pauseInputRef = useRef(Boolean(options.pauseInput));
   const onEventRef = useRef(onEvent);
+  const initialContextRef = useRef(options.initialContext || '');
   const noiseFloorRef = useRef(0.0025);
   const speechHangoverRef = useRef(0);
   const preRollFramesRef = useRef([]);
@@ -32,6 +33,10 @@ export function useVoice(onEvent, options = {}) {
   useEffect(() => {
     onEventRef.current = onEvent;
   }, [onEvent]);
+
+  useEffect(() => {
+    initialContextRef.current = options.initialContext || '';
+  }, [options.initialContext]);
 
   const stopMic = useCallback(() => {
     if (processorRef.current) {
@@ -143,6 +148,10 @@ export function useVoice(onEvent, options = {}) {
       wsRef.current = ws;
 
       ws.onopen = () => {
+        const initialContext = initialContextRef.current.trim();
+        if (initialContext) {
+          ws.send(JSON.stringify({ type: 'init', text: initialContext }));
+        }
         setIsConnected(true);
         setConnectionState('connected');
       };
