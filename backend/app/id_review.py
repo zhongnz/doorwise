@@ -1,4 +1,5 @@
 import asyncio
+import json
 import os
 from typing import Any, Dict, Literal, Optional
 
@@ -74,6 +75,54 @@ Super phone on file: {super_phone}
 """.strip()
 
 
+def build_retry_prompt() -> str:
+    return (
+        "Return valid compact JSON only. "
+        "Keep reasoning and recommended_action short. "
+        "If text is unreadable or the image is not clearly an ID, set claim_alignment to 'unclear' and evidence_quality to 'poor'."
+    )
+
+
+def fallback_review(*, model_name: str, message: str) -> Dict[str, Any]:
+    result = IdReviewResult(
+        document_present=False,
+        document_type="unknown",
+        person_name=None,
+        organization_name=None,
+        role_title=None,
+        badge_or_employee_id=None,
+        apartment_or_unit=None,
+        expiration_date=None,
+        claim_alignment="unclear",
+        evidence_quality="poor",
+        reasoning=message,
+        recommended_action="Retake or upload a clearer ID image and treat this as unverified until a callback confirms the visitor.",
+    )
+    payload = result.model_dump()
+    payload["model"] = model_name
+    payload["fallback_used"] = True
+    return payload
+
+
+def coerce_review_result(response: Any, model_name: str) -> Dict[str, Any]:
+    parsed = response.parsed
+    if isinstance(parsed, IdReviewResult):
+        result = parsed
+    elif parsed:
+        result = IdReviewResult.model_validate(parsed)
+    elif response.text:
+        try:
+            result = IdReviewResult.model_validate_json(response.text)
+        except Exception:
+            result = IdReviewResult.model_validate(json.loads(response.text))
+    else:
+        raise RuntimeError("Gemini returned an empty ID review response.")
+
+    payload = result.model_dump()
+    payload["model"] = model_name
+    return payload
+
+
 def _review_supporting_id_sync(
     *,
     image_bytes: bytes,
@@ -112,20 +161,31 @@ def _review_supporting_id_sync(
                 max_output_tokens=500,
             ),
         )
-
-    parsed = response.parsed
-    if isinstance(parsed, IdReviewResult):
-        result = parsed
-    elif parsed:
-        result = IdReviewResult.model_validate(parsed)
-    elif response.text:
-        result = IdReviewResult.model_validate_json(response.text)
-    else:
-        raise RuntimeError("Gemini returned an empty ID review response.")
-
-    payload = result.model_dump()
-    payload["model"] = model_name
-    return payload
+        try:
+            return coerce_review_result(response, model_name)
+        except Exception:
+            retry_response = client.models.generate_content(
+                model=model_name,
+                contents=[
+                    f"{prompt}\n\n{build_retry_prompt()}",
+                    types.Part.from_bytes(data=image_bytes, mime_type=mime_type),
+                ],
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json",
+                    response_schema=IdReviewResult,
+                    temperature=0.0,
+                    max_output_tokens=350,
+                ),
+            )
+            try:
+                payload = coerce_review_result(retry_response, model_name)
+                payload["fallback_used"] = True
+                return payload
+            except Exception:
+                return fallback_review(
+                    model_name=model_name,
+                    message="Gemini could not return a reliable structured document review for this image.",
+                )
 
 
 async def review_supporting_id(
