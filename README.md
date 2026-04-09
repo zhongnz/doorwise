@@ -63,6 +63,7 @@ SOCRATA_APP_TOKEN=optional_token_here
 BUILDING_MANAGEMENT_PHONE=optional_phone_here
 BUILDING_SUPER_PHONE=optional_phone_here
 APPROVED_VENDORS=optional,comma,separated,vendors
+TRUSTED_ID_ORGANIZATIONS=New York University,NYU
 ```
 
 ## Production build
@@ -110,9 +111,9 @@ SOCRATA_APP_TOKEN=optional_token_here
 - Voice is the primary experience in the product story, while text remains the fallback path when microphone access or live connectivity is unavailable.
 - The camera view is a live preview only in the current MVP; it does not run person detection continuously.
 - DoorWise currently supports three playbooks: inspector, contractor, and management access requests.
-- Gemini ID review is supporting evidence only, not standalone authorization to open the door.
+- Gemini ID review is supporting evidence first, but it can trigger a building-defined trusted-ID policy when you configure allowed organizations such as NYU.
 - Browser alerts are supported today; a dedicated phone notification path is still future work.
-- Building callback numbers and approved vendors are only used when you configure them in setup or environment variables.
+- Building callback numbers, approved vendors, and trusted ID organizations are only used when you configure them in setup or environment variables.
 
 ## Expansion paths
 

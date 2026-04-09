@@ -300,6 +300,49 @@ class DoorWiseApiTests(unittest.TestCase):
         self.assertEqual(payload["organization_name"], "Ace Plumbing")
         self.assertEqual(payload["source"], "upload")
 
+    @patch("backend.app.main.review_supporting_id", new_callable=AsyncMock)
+    def test_review_id_endpoint_can_promote_trusted_organization_ids(self, review_supporting_id):
+        review_supporting_id.return_value = {
+            "document_present": True,
+            "document_type": "company_id",
+            "person_name": "Jordan Lee",
+            "organization_name": "New York University",
+            "role_title": "Facilities",
+            "badge_or_employee_id": "NYU-4421",
+            "apartment_or_unit": None,
+            "expiration_date": None,
+            "claim_alignment": "match",
+            "evidence_quality": "clear",
+            "reasoning": "The badge text clearly shows New York University and matches the claim.",
+            "recommended_action": "Use this as supporting evidence while you apply building policy.",
+            "model": "gemini-2.5-flash",
+        }
+
+        response = self.client.post(
+            "/api/review-id",
+            json={
+                "address": {
+                    "houseNumber": "370",
+                    "street": "Jay St",
+                    "borough": "Brooklyn",
+                    "apartment": "317",
+                },
+                "visitor_claim": "I'm with NYU facilities and need building access.",
+                "building_context": {
+                    "trusted_id_organizations": ["NYU", "New York University"],
+                },
+                "mime_type": "image/jpeg",
+                "image_base64": base64.b64encode(b"fake-image-bytes").decode("utf-8"),
+                "source": "upload",
+            },
+        )
+
+        payload = response.json()
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(payload["trusted_organization_match"], "NYU")
+        self.assertEqual(payload["policy_decision"], "PROCEED_AFTER_ID_CHECK")
+        self.assertEqual(payload["policy_confidence"], "high")
+
 
 if __name__ == "__main__":
     unittest.main()

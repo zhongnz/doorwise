@@ -22,6 +22,7 @@ const initialBuildingContext = {
   management_phone: '',
   super_phone: '',
   approved_vendors_input: '',
+  trusted_id_organizations_input: '',
 };
 
 const demoBuildingContext = {
@@ -29,6 +30,7 @@ const demoBuildingContext = {
   management_phone: '212-555-0100',
   super_phone: '646-555-0111',
   approved_vendors_input: 'Ace Plumbing, BrightWire Electric',
+  trusted_id_organizations_input: 'New York University, NYU',
 };
 
 const storageKeys = {
@@ -86,6 +88,10 @@ const AddressSetup = () => {
         management_phone: buildingContext.management_phone.trim(),
         super_phone: buildingContext.super_phone.trim(),
         approved_vendors: buildingContext.approved_vendors_input
+          .split(/[,\n;]/)
+          .map((value) => value.trim())
+          .filter(Boolean),
+        trusted_id_organizations: buildingContext.trusted_id_organizations_input
           .split(/[,\n;]/)
           .map((value) => value.trim())
           .filter(Boolean),
@@ -249,8 +255,21 @@ const AddressSetup = () => {
                 />
               </div>
 
+              <div className="form-group">
+                <label htmlFor="trusted_id_organizations_input">Trusted ID Organizations (Optional)</label>
+                <textarea
+                  id="trusted_id_organizations_input"
+                  name="trusted_id_organizations_input"
+                  value={buildingContext.trusted_id_organizations_input}
+                  onChange={handleBuildingContextChange}
+                  placeholder="Comma-separated organizations allowed by ID, like New York University, NYU"
+                  rows="2"
+                />
+              </div>
+
               <div className="building-context-note">
-                DoorWise can use these contacts and vendor names to say who to call and when a contractor looks expected.
+                DoorWise can use these contacts, vendor names, and trusted ID organizations to suggest who to call,
+                when a contractor looks expected, and when a verified badge can raise confidence.
               </div>
             </div>
 

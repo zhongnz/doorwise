@@ -41,6 +41,7 @@ DEFAULT_BUILDING_CONTEXT = {
     "management_phone": normalize_phone(os.getenv("BUILDING_MANAGEMENT_PHONE")),
     "super_phone": normalize_phone(os.getenv("BUILDING_SUPER_PHONE")),
     "approved_vendors": parse_vendor_list(os.getenv("APPROVED_VENDORS")),
+    "trusted_id_organizations": parse_vendor_list(os.getenv("TRUSTED_ID_ORGANIZATIONS")),
 }
 
 
@@ -50,6 +51,7 @@ def merge_building_context(payload: Optional[Dict[str, Any]]) -> Dict[str, Any]:
         "management_phone": DEFAULT_BUILDING_CONTEXT["management_phone"],
         "super_phone": DEFAULT_BUILDING_CONTEXT["super_phone"],
         "approved_vendors": list(DEFAULT_BUILDING_CONTEXT["approved_vendors"]),
+        "trusted_id_organizations": list(DEFAULT_BUILDING_CONTEXT["trusted_id_organizations"]),
     }
 
     if not payload:
@@ -59,6 +61,7 @@ def merge_building_context(payload: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     management_phone = normalize_phone(payload.get("management_phone"))
     super_phone = normalize_phone(payload.get("super_phone"))
     approved_vendors = payload.get("approved_vendors") or []
+    trusted_id_organizations = payload.get("trusted_id_organizations") or []
 
     if building_name:
         context["building_name"] = building_name
@@ -80,6 +83,19 @@ def merge_building_context(payload: Optional[Dict[str, Any]]) -> Dict[str, Any]:
         merged_vendors.append(clean)
 
     context["approved_vendors"] = merged_vendors
+    merged_trusted_orgs: list[str] = []
+    seen_trusted_orgs: set[str] = set()
+    for organization in [*context["trusted_id_organizations"], *trusted_id_organizations]:
+        clean = str(organization).strip()
+        if not clean:
+            continue
+        key = normalize_vendor_name(clean)
+        if not key or key in seen_trusted_orgs:
+            continue
+        seen_trusted_orgs.add(key)
+        merged_trusted_orgs.append(clean)
+
+    context["trusted_id_organizations"] = merged_trusted_orgs
     return context
 
 

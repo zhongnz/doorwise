@@ -35,6 +35,7 @@ const emptyBuildingContext = {
   management_phone: '',
   super_phone: '',
   approved_vendors: [],
+  trusted_id_organizations: [],
 };
 
 const storageKeys = {
@@ -380,6 +381,37 @@ const Dashboard = () => {
     });
   };
 
+  const applyIdPolicyDecision = (reviewPayload) => {
+    if (!reviewPayload?.policy_decision) {
+      return;
+    }
+
+    setStatus(reviewPayload.policy_decision);
+    setConfidence(reviewPayload.policy_confidence || confidence || 'medium');
+    setRecommendedAction(reviewPayload.policy_action || recommendedAction);
+    setRecommendedScript(reviewPayload.policy_script || recommendedScript);
+    setDecisionReasoning((previous) => {
+      const policyReasoning = reviewPayload.policy_reasoning || '';
+      if (!policyReasoning) {
+        return previous;
+      }
+      if (!previous) {
+        return policyReasoning;
+      }
+      if (previous.includes(policyReasoning)) {
+        return previous;
+      }
+      return `${previous} ${policyReasoning}`;
+    });
+
+    if (reviewPayload.policy_decision === 'PROCEED_AFTER_ID_CHECK') {
+      appendTranscript({
+        role: 'agent',
+        text: `The ID matches trusted organization ${reviewPayload.trusted_organization_match}. Proceed after a final visual ID check.`,
+      });
+    }
+  };
+
   const triggerVerification = async (claim) => {
     if (!address) {
       return;
@@ -614,6 +646,7 @@ const Dashboard = () => {
 
       const data = await response.json();
       setIdReview(data);
+      applyIdPolicyDecision(data);
     } catch (error) {
       setIdReview(null);
       setIdReviewError(error.message || 'DoorWise could not review that ID image.');
@@ -896,6 +929,12 @@ const Dashboard = () => {
                     <span>{idReview.reasoning}</span>
                   </div>
 
+                  {idReview.trusted_organization_match ? (
+                    <div className="id-review-status">
+                      Trusted organization policy match: {idReview.trusted_organization_match}
+                    </div>
+                  ) : null}
+
                   <div className="id-review-grid">
                     <div className="id-review-field">
                       <span>Document type</span>
@@ -927,6 +966,13 @@ const Dashboard = () => {
                     <strong>Document review action</strong>
                     <p>{idReview.recommended_action}</p>
                   </div>
+
+                  {idReview.policy_action ? (
+                    <div className="id-review-recommendation">
+                      <strong>Building policy outcome</strong>
+                      <p>{idReview.policy_action}</p>
+                    </div>
+                  ) : null}
                 </div>
               ) : null}
             </div>

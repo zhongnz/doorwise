@@ -20,8 +20,10 @@ export function useVoice(onEvent, options = {}) {
   const isPlayingRef = useRef(false);
   const pauseInputRef = useRef(Boolean(options.pauseInput));
   const onEventRef = useRef(onEvent);
-  const noiseFloorRef = useRef(0.0035);
+  const noiseFloorRef = useRef(0.0025);
   const speechHangoverRef = useRef(0);
+  const preRollFramesRef = useRef([]);
+  const warmupFramesRef = useRef(0);
 
   useEffect(() => {
     pauseInputRef.current = Boolean(options.pauseInput);
@@ -100,8 +102,10 @@ export function useVoice(onEvent, options = {}) {
 
     audioQueueRef.current = [];
     isPlayingRef.current = false;
-    noiseFloorRef.current = 0.0035;
+    noiseFloorRef.current = 0.0025;
     speechHangoverRef.current = 0;
+    preRollFramesRef.current = [];
+    warmupFramesRef.current = 0;
     setIsSpeaking(false);
     setIsConnected(false);
     setConnectionState('idle');
@@ -125,11 +129,14 @@ export function useVoice(onEvent, options = {}) {
 
       const audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
       audioContextRef.current = audioContext;
+      await audioContext.resume().catch(() => {});
       const source = audioContext.createMediaStreamSource(stream);
-      const processor = audioContext.createScriptProcessor(2048, 1, 1);
+      const processor = audioContext.createScriptProcessor(1024, 1, 1);
       processorRef.current = processor;
-      noiseFloorRef.current = 0.0035;
+      noiseFloorRef.current = 0.0025;
       speechHangoverRef.current = 0;
+      preRollFramesRef.current = [];
+      warmupFramesRef.current = 24;
 
       const ws = new WebSocket(getWebSocketUrl());
       ws.binaryType = 'blob';
@@ -178,10 +185,14 @@ export function useVoice(onEvent, options = {}) {
         }
 
         if (pauseInputRef.current) {
+          speechHangoverRef.current = 0;
+          preRollFramesRef.current = [];
           return;
         }
 
         if (isPlayingRef.current) {
+          speechHangoverRef.current = 0;
+          preRollFramesRef.current = [];
           return;
         }
 
@@ -192,22 +203,6 @@ export function useVoice(onEvent, options = {}) {
         }
 
         const rms = Math.sqrt(energy / inputData.length);
-        const openThreshold = Math.max(0.0075, noiseFloorRef.current * 2.2);
-        const closeThreshold = Math.max(0.0045, noiseFloorRef.current * 1.4);
-
-        if (rms >= openThreshold) {
-          speechHangoverRef.current = 6;
-        } else if (speechHangoverRef.current > 0) {
-          if (rms >= closeThreshold) {
-            speechHangoverRef.current = 6;
-          } else {
-            speechHangoverRef.current -= 1;
-          }
-        } else {
-          noiseFloorRef.current = (noiseFloorRef.current * 0.94) + (rms * 0.06);
-          return;
-        }
-
         const pcm16 = new Int16Array(inputData.length);
 
         for (let index = 0; index < inputData.length; index += 1) {
@@ -215,7 +210,41 @@ export function useVoice(onEvent, options = {}) {
           pcm16[index] = sample < 0 ? sample * 0x8000 : sample * 0x7fff;
         }
 
-        ws.send(pcm16.buffer);
+        const frameBuffer = pcm16.buffer.slice(0);
+        const warmupActive = warmupFramesRef.current > 0;
+        const openThreshold = Math.max(warmupActive ? 0.0038 : 0.0052, noiseFloorRef.current * (warmupActive ? 1.55 : 1.95));
+        const closeThreshold = Math.max(warmupActive ? 0.0026 : 0.0036, noiseFloorRef.current * (warmupActive ? 1.12 : 1.28));
+        const enteringSpeech = rms >= openThreshold && speechHangoverRef.current === 0;
+
+        if (rms >= openThreshold) {
+          speechHangoverRef.current = warmupActive ? 10 : 8;
+        } else if (speechHangoverRef.current > 0) {
+          if (rms >= closeThreshold) {
+            speechHangoverRef.current = warmupActive ? 10 : 8;
+          } else {
+            speechHangoverRef.current -= 1;
+          }
+        } else {
+          noiseFloorRef.current = (noiseFloorRef.current * 0.92) + (rms * 0.08);
+          preRollFramesRef.current.push(frameBuffer);
+          if (preRollFramesRef.current.length > 5) {
+            preRollFramesRef.current.shift();
+          }
+          if (warmupFramesRef.current > 0) {
+            warmupFramesRef.current -= 1;
+          }
+          return;
+        }
+
+        if (enteringSpeech && preRollFramesRef.current.length) {
+          preRollFramesRef.current.forEach((buffer) => ws.send(buffer));
+        }
+        preRollFramesRef.current = [];
+        ws.send(frameBuffer);
+
+        if (warmupFramesRef.current > 0) {
+          warmupFramesRef.current -= 1;
+        }
       };
 
       source.connect(processor);

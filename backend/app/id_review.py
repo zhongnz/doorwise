@@ -50,6 +50,7 @@ def build_id_review_prompt(
     building_context: Dict[str, Any],
 ) -> str:
     approved_vendors = ", ".join(building_context.get("approved_vendors", [])) or "none configured"
+    trusted_id_organizations = ", ".join(building_context.get("trusted_id_organizations", [])) or "none configured"
     building_name = building_context.get("building_name") or "not configured"
     management_phone = building_context.get("management_phone") or "not configured"
     super_phone = building_context.get("super_phone") or "not configured"
@@ -62,6 +63,7 @@ Important rules:
 - Only extract text or document details that are visible and reasonably legible.
 - If the image is blurry, blocked, or not clearly an ID, say so.
 - Compare the visible organization, person name, title, and badge details to the visitor claim.
+- Pay special attention to organization text on university, employer, agency, or contractor IDs.
 - This review is supporting evidence only. It does not authorize entry by itself.
 - Keep reasoning concise and practical.
 
@@ -70,6 +72,7 @@ Detected playbook: {playbook}
 Building address: {address_label}
 Building name: {building_name}
 Approved vendors: {approved_vendors}
+Trusted ID organizations: {trusted_id_organizations}
 Management phone on file: {management_phone}
 Super phone on file: {super_phone}
 """.strip()

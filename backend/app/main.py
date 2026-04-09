@@ -67,6 +67,7 @@ class BuildingContextInput(BaseModel):
     management_phone: Optional[str] = None
     super_phone: Optional[str] = None
     approved_vendors: List[str] = Field(default_factory=list)
+    trusted_id_organizations: List[str] = Field(default_factory=list)
 
 
 class VerificationRequest(BaseModel):
@@ -98,6 +99,13 @@ def format_address(address: AddressInput) -> str:
 def normalize_text(value: str) -> str:
     lowered = re.sub(r"[^a-z0-9\s]", " ", value.lower())
     return " ".join(lowered.split())
+
+
+def abbreviation_for_text(value: str) -> str:
+    words = [word for word in normalize_text(value).split() if word and word not in {"of", "the", "and"}]
+    if len(words) < 2:
+        return ""
+    return "".join(word[0] for word in words)
 
 
 def dataset_summary(result: QueryResult) -> Dict[str, Any]:
@@ -254,12 +262,39 @@ def find_claim_match(claim: str, candidates: List[str]) -> str:
     return ""
 
 
+def find_trusted_organization_match(organization_name: str, candidates: List[str]) -> str:
+    organization = str(organization_name or "").strip()
+    if not organization:
+        return ""
+
+    for candidate in candidates:
+        if text_values_overlap(organization, candidate):
+            return candidate
+    return ""
+
+
 def text_values_overlap(left: str, right: str) -> bool:
     normalized_left = normalize_text(left)
     normalized_right = normalize_text(right)
     if len(normalized_left) < 4 or len(normalized_right) < 4:
-        return False
-    return normalized_left in normalized_right or normalized_right in normalized_left
+        left_abbreviation = abbreviation_for_text(left)
+        right_abbreviation = abbreviation_for_text(right)
+        if left_abbreviation and left_abbreviation == normalized_right:
+            return True
+        if right_abbreviation and right_abbreviation == normalized_left:
+            return True
+        return normalized_left == normalized_right and bool(normalized_left)
+
+    if normalized_left in normalized_right or normalized_right in normalized_left:
+        return True
+
+    left_abbreviation = abbreviation_for_text(left)
+    right_abbreviation = abbreviation_for_text(right)
+    if left_abbreviation and left_abbreviation == normalized_right:
+        return True
+    if right_abbreviation and right_abbreviation == normalized_left:
+        return True
+    return False
 
 
 def permit_business_candidates(records: List[Dict[str, Any]]) -> List[str]:
@@ -607,6 +642,47 @@ def generate_playbook_response(claim: str, context: Dict[str, Any], results_by_k
     return build_unknown_playbook(context, results_by_key)
 
 
+def apply_id_review_policy(review: Dict[str, Any], playbook: str, context: Dict[str, Any]) -> Dict[str, Any]:
+    trusted_match = find_trusted_organization_match(
+        str(review.get("organization_name") or ""),
+        list(context.get("trusted_id_organizations", [])),
+    )
+    claim_alignment = str(review.get("claim_alignment") or "")
+    evidence_quality = str(review.get("evidence_quality") or "")
+    document_present = bool(review.get("document_present"))
+
+    if trusted_match:
+        review["trusted_organization_match"] = trusted_match
+
+    if not trusted_match:
+        return review
+
+    if document_present and claim_alignment in {"match", "partial"} and evidence_quality in {"clear", "usable"}:
+        review["policy_decision"] = "PROCEED_AFTER_ID_CHECK"
+        review["policy_reasoning"] = (
+            f'The document appears to match trusted organization "{trusted_match}", so the building policy can allow '
+            "entry after a final visual ID check."
+        )
+        review["policy_action"] = (
+            "Proceed after checking that the person holding the ID matches the visible photo and keep access limited "
+            "to the stated purpose."
+        )
+        review["policy_script"] = "Please hold your ID steady for one more moment while I confirm the organization and photo."
+        review["policy_confidence"] = "high" if claim_alignment == "match" else "medium"
+    else:
+        review["policy_decision"] = "CALL_TO_CONFIRM"
+        review["policy_reasoning"] = (
+            f'The ID points to trusted organization "{trusted_match}", but the image or claim match is not strong enough '
+            "to open on ID alone."
+        )
+        review["policy_action"] = "Retake the ID image or call a known building contact before allowing entry."
+        review["policy_script"] = "Please wait while I confirm your ID details with building staff."
+        review["policy_confidence"] = "medium" if document_present else "low"
+
+    review["policy_playbook"] = playbook
+    return review
+
+
 def decode_image_payload(image_base64: str) -> bytes:
     try:
         return base64.b64decode(image_base64, validate=True)
@@ -673,6 +749,7 @@ async def review_uploaded_id(req: IdReviewRequest) -> Dict[str, Any]:
             address_label=format_address(req.address),
             building_context=building_context,
         )
+        review = apply_id_review_policy(review, playbook, building_context)
 
         return {
             **review,
