@@ -81,7 +81,7 @@ const Setup = () => {
       // Construct the address label
       const addressLabel = `${address.houseNumber} ${address.street}${address.apartment ? `, Apt ${address.apartment}` : ''}, ${address.borough}`;
       
-      // Create the address object (works in demo mode without backend)
+      // Create the address object
       const addressData = {
         ...address,
         label: addressLabel,
@@ -101,28 +101,12 @@ const Setup = () => {
           .filter(Boolean),
       };
 
-      // Try to validate with backend, but proceed even if it fails (demo mode)
-      try {
-        const response = await fetch('/api/address/validate', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(address),
-        });
-
-        if (response.ok) {
-          const data = await response.json();
-          localStorage.setItem(STORAGE_KEYS.address, JSON.stringify(data.address));
-          localStorage.setItem(STORAGE_KEYS.addressValidation, JSON.stringify(data));
-        } else {
-          // Use local data in demo mode
-          localStorage.setItem(STORAGE_KEYS.address, JSON.stringify(addressData));
-        }
-      } catch {
-        // Backend unavailable - use local data (demo mode)
-        localStorage.setItem(STORAGE_KEYS.address, JSON.stringify(addressData));
-      }
-
+      // Save to localStorage (no backend required)
+      localStorage.setItem(STORAGE_KEYS.address, JSON.stringify(addressData));
       localStorage.setItem(STORAGE_KEYS.buildingContext, JSON.stringify(normalizedBuildingContext));
+      
+      // Small delay for UX
+      await new Promise(resolve => setTimeout(resolve, 500));
       
       navigate('/dashboard');
     } catch (err) {
