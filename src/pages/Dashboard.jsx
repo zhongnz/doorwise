@@ -246,10 +246,47 @@ const Dashboard = () => {
 
   // Demo mode mock responses based on claim keywords
   const getDemoResponse = useCallback((claim) => {
-    const lowerClaim = claim.toLowerCase();
+    const lowerClaim = claim.toLowerCase().trim();
+    
+    // Greetings - ask for more information (return null to indicate conversational response)
+    const greetings = ['hi', 'hello', 'hey', 'good morning', 'good afternoon', 'good evening', 'yo', 'sup'];
+    if (greetings.some(g => lowerClaim === g || lowerClaim.startsWith(g + ' ') || lowerClaim.startsWith(g + ','))) {
+      return {
+        isConversational: true,
+        response: 'Hello! Who are you here to see, or what is the purpose of your visit?',
+      };
+    }
+    
+    // Vague responses - ask for clarification
+    const vague = ['i need to get in', 'let me in', 'open the door', 'buzz me in', 'i live here', 'resident'];
+    if (vague.some(v => lowerClaim.includes(v))) {
+      return {
+        isConversational: true,
+        response: 'I need more details to verify. What apartment are you visiting, or what is your name if you are a resident?',
+      };
+    }
+    
+    // Delivery claims - common and should work
+    if (lowerClaim.includes('delivery') || lowerClaim.includes('package') || lowerClaim.includes('amazon') || lowerClaim.includes('ups') || lowerClaim.includes('fedex') || lowerClaim.includes('usps') || lowerClaim.includes('doordash') || lowerClaim.includes('uber eats') || lowerClaim.includes('grubhub')) {
+      return {
+        decision: DECISION_STATUS.PROCEED,
+        reasoning: 'Delivery service recognized. Standard delivery protocol applies.',
+        recommended_action: 'Allow delivery person to leave package in lobby or designated area.',
+        recommended_script: 'You can leave the package in the lobby by the mailboxes. Thank you!',
+        escalation_contact: buildingContext?.management_phone || '(212) 555-0100',
+        confidence: 'high',
+        playbook: 'delivery',
+        datasets: [
+          { name: 'Delivery Services', status: 'match', records: 1 },
+        ],
+        matched_records: [
+          { type: 'policy', description: 'Standard delivery acceptance policy', date: 'Active' }
+        ],
+      };
+    }
     
     // HPD inspector claims - verify against mock violations
-    if (lowerClaim.includes('hpd') || lowerClaim.includes('inspector') || lowerClaim.includes('lead paint') || lowerClaim.includes('violation')) {
+    if (lowerClaim.includes('hpd') || lowerClaim.includes('inspector') || lowerClaim.includes('lead paint') || lowerClaim.includes('violation') || lowerClaim.includes('inspection')) {
       return {
         decision: DECISION_STATUS.PROCEED_AFTER_ID_CHECK,
         reasoning: 'Found matching HPD violation for lead paint inspection scheduled this month.',
@@ -269,12 +306,12 @@ const Dashboard = () => {
     }
     
     // Contractor/repair claims
-    if (lowerClaim.includes('contractor') || lowerClaim.includes('repair') || lowerClaim.includes('plumber') || lowerClaim.includes('electrician')) {
+    if (lowerClaim.includes('contractor') || lowerClaim.includes('repair') || lowerClaim.includes('plumber') || lowerClaim.includes('electrician') || lowerClaim.includes('maintenance') || lowerClaim.includes('fix')) {
       return {
         decision: DECISION_STATUS.CALL_TO_CONFIRM,
         reasoning: 'No matching work order or permit found for this contractor visit.',
         recommended_action: 'Call building management to confirm this work was scheduled.',
-        recommended_script: 'I need to verify this with building management. Please wait.',
+        recommended_script: 'I need to verify this with building management. Please wait one moment.',
         escalation_contact: buildingContext?.management_phone || '(212) 555-0100',
         confidence: 'medium',
         playbook: 'contractor',
@@ -286,8 +323,8 @@ const Dashboard = () => {
       };
     }
     
-    // Management claims
-    if (lowerClaim.includes('management') || lowerClaim.includes('landlord') || lowerClaim.includes('super')) {
+    // Management/building staff claims
+    if (lowerClaim.includes('management') || lowerClaim.includes('landlord') || lowerClaim.includes('super') || lowerClaim.includes('building staff')) {
       return {
         decision: DECISION_STATUS.CALL_TO_CONFIRM,
         reasoning: 'Management visit requires phone verification.',
@@ -301,20 +338,25 @@ const Dashboard = () => {
       };
     }
     
-    // Unknown/suspicious claims
+    // Visitor for a specific apartment
+    if (lowerClaim.includes('visiting') || lowerClaim.includes('guest') || lowerClaim.includes('friend') || lowerClaim.includes('family') || lowerClaim.match(/apt|apartment|unit|#?\d+[a-z]?/i)) {
+      return {
+        decision: DECISION_STATUS.CALL_TO_CONFIRM,
+        reasoning: 'Personal visitor. Resident confirmation required.',
+        recommended_action: 'Call the resident to confirm they are expecting this visitor.',
+        recommended_script: 'Let me contact the resident to confirm your visit. One moment.',
+        escalation_contact: 'Resident intercom',
+        confidence: 'medium',
+        playbook: 'visitor',
+        datasets: [],
+        matched_records: [],
+      };
+    }
+    
+    // Unknown/unclear - ask for more info instead of rejecting
     return {
-      decision: DECISION_STATUS.DO_NOT_OPEN,
-      reasoning: 'Unable to verify this claim against any building records.',
-      recommended_action: 'Do not open. Ask them to schedule through management.',
-      recommended_script: 'I cannot verify your visit. Please contact building management to schedule.',
-      escalation_contact: buildingContext?.management_phone || '911',
-      confidence: 'low',
-      playbook: 'manual-review',
-      datasets: [
-        { name: 'HPD Violations', status: 'no_match', records: 0 },
-        { name: 'DOB Permits', status: 'no_match', records: 0 },
-      ],
-      matched_records: [],
+      isConversational: true,
+      response: 'I didn\'t catch that. Could you tell me who you\'re here to see or the purpose of your visit? For example: "Delivery for apartment 5A" or "HPD inspector for lead paint inspection".',
     };
   }, [buildingContext]);
 
@@ -322,22 +364,31 @@ const Dashboard = () => {
   const triggerVerification = useCallback(async (claim) => {
     if (!address) return;
 
-    setCurrentClaim(claim);
-    setStatus(DECISION_STATUS.VERIFYING);
-    setDatasetResults([]);
-    setDecisionReasoning('');
-    setRecommendedScript('');
-    setRecommendedAction('');
-    setEscalationContact('');
-    setMatchedRecords([]);
-    setConfidence('');
-    setPlaybook('');
-    appendTranscript({ role: 'agent', text: 'Checking building records now.' });
-
-    // In demo mode, use mock data with a slight delay for realism
+    // In demo mode, check for conversational responses first (no "Checking records" message)
     if (isDemoMode) {
-      await new Promise(resolve => setTimeout(resolve, 1500));
       const data = getDemoResponse(claim);
+      
+      // Handle conversational responses (greetings, vague claims, etc.)
+      if (data.isConversational) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+        appendTranscript({ role: 'agent', text: data.response });
+        return;
+      }
+      
+      // It's a real claim - show verification flow
+      setCurrentClaim(claim);
+      setStatus(DECISION_STATUS.VERIFYING);
+      setDatasetResults([]);
+      setDecisionReasoning('');
+      setRecommendedScript('');
+      setRecommendedAction('');
+      setEscalationContact('');
+      setMatchedRecords([]);
+      setConfidence('');
+      setPlaybook('');
+      appendTranscript({ role: 'agent', text: 'Let me check our building records...' });
+      
+      await new Promise(resolve => setTimeout(resolve, 1500));
       
       setStatus(data.decision);
       setDatasetResults(data.datasets || []);
@@ -348,7 +399,7 @@ const Dashboard = () => {
       setMatchedRecords(data.matched_records || []);
       setConfidence(data.confidence || '');
       setPlaybook(data.playbook || '');
-      appendTranscript({ role: 'agent', text: data.recommended_action || data.reasoning });
+      appendTranscript({ role: 'agent', text: data.recommended_script || data.recommended_action });
 
       // Save incident
       const incident = {
@@ -365,6 +416,19 @@ const Dashboard = () => {
       });
       return;
     }
+
+    // Non-demo mode - use real API
+    setCurrentClaim(claim);
+    setStatus(DECISION_STATUS.VERIFYING);
+    setDatasetResults([]);
+    setDecisionReasoning('');
+    setRecommendedScript('');
+    setRecommendedAction('');
+    setEscalationContact('');
+    setMatchedRecords([]);
+    setConfidence('');
+    setPlaybook('');
+    appendTranscript({ role: 'agent', text: 'Checking building records now.' });
 
     try {
       const response = await fetch(API_ENDPOINTS.VERIFY, {
