@@ -1,11 +1,276 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
+// Check if we should use WebSocket backend or browser Speech API
+const USE_BROWSER_SPEECH = !import.meta.env.VITE_ENABLE_PROXY;
+
 function getWebSocketUrl() {
   const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
   return `${protocol}://${window.location.host}/ws/chat`;
 }
 
-export function useVoice(onEvent, options = {}) {
+/**
+ * Browser-based voice using Web Speech API
+ */
+function useBrowserVoice(onEvent) {
+  const [isConnected, setIsConnected] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const [isUserSpeaking, setIsUserSpeaking] = useState(false);
+  const [connectionState, setConnectionState] = useState('idle');
+  const [lastError, setLastError] = useState(null);
+  const [audioLevel, setAudioLevel] = useState(0);
+
+  const recognitionRef = useRef(null);
+  const synthRef = useRef(null);
+  const onEventRef = useRef(onEvent);
+  const isListeningRef = useRef(false);
+  const audioContextRef = useRef(null);
+  const analyserRef = useRef(null);
+  const mediaStreamRef = useRef(null);
+  const animationFrameRef = useRef(null);
+
+  useEffect(() => {
+    onEventRef.current = onEvent;
+  }, [onEvent]);
+
+  // Speak text using Web Speech Synthesis
+  const speak = useCallback((text) => {
+    if (!text || !window.speechSynthesis) return;
+    
+    // Cancel any ongoing speech
+    window.speechSynthesis.cancel();
+    
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.rate = 1.0;
+    utterance.pitch = 1.0;
+    utterance.volume = 1.0;
+    
+    // Try to use a good voice
+    const voices = window.speechSynthesis.getVoices();
+    const preferredVoice = voices.find(v => 
+      v.name.includes('Samantha') || 
+      v.name.includes('Google') || 
+      v.name.includes('Microsoft') ||
+      v.lang.startsWith('en')
+    );
+    if (preferredVoice) {
+      utterance.voice = preferredVoice;
+    }
+    
+    utterance.onstart = () => setIsSpeaking(true);
+    utterance.onend = () => setIsSpeaking(false);
+    utterance.onerror = () => setIsSpeaking(false);
+    
+    synthRef.current = utterance;
+    window.speechSynthesis.speak(utterance);
+  }, []);
+
+  // Monitor audio levels for visualization
+  const startAudioMonitoring = useCallback(async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaStreamRef.current = stream;
+      
+      const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      audioContextRef.current = audioContext;
+      
+      const analyser = audioContext.createAnalyser();
+      analyser.fftSize = 256;
+      analyserRef.current = analyser;
+      
+      const source = audioContext.createMediaStreamSource(stream);
+      source.connect(analyser);
+      
+      const dataArray = new Uint8Array(analyser.frequencyBinCount);
+      
+      const updateLevel = () => {
+        if (!analyserRef.current) return;
+        
+        analyserRef.current.getByteFrequencyData(dataArray);
+        const average = dataArray.reduce((a, b) => a + b, 0) / dataArray.length;
+        const normalized = Math.min(1, average / 128);
+        setAudioLevel(normalized);
+        
+        if (normalized > 0.15) {
+          setIsUserSpeaking(true);
+        } else {
+          setIsUserSpeaking(false);
+        }
+        
+        animationFrameRef.current = requestAnimationFrame(updateLevel);
+      };
+      
+      updateLevel();
+    } catch (err) {
+      console.error('Audio monitoring failed:', err);
+    }
+  }, []);
+
+  const stopAudioMonitoring = useCallback(() => {
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current);
+      animationFrameRef.current = null;
+    }
+    if (mediaStreamRef.current) {
+      mediaStreamRef.current.getTracks().forEach(track => track.stop());
+      mediaStreamRef.current = null;
+    }
+    if (audioContextRef.current) {
+      audioContextRef.current.close();
+      audioContextRef.current = null;
+    }
+    analyserRef.current = null;
+    setAudioLevel(0);
+  }, []);
+
+  const disconnect = useCallback(() => {
+    if (recognitionRef.current) {
+      recognitionRef.current.stop();
+      recognitionRef.current = null;
+    }
+    window.speechSynthesis?.cancel();
+    stopAudioMonitoring();
+    isListeningRef.current = false;
+    setIsConnected(false);
+    setConnectionState('idle');
+    setIsSpeaking(false);
+    setIsUserSpeaking(false);
+  }, [stopAudioMonitoring]);
+
+  const connect = useCallback(async () => {
+    setConnectionState('connecting');
+    setLastError(null);
+
+    // Check for Speech Recognition support
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      setLastError('Speech recognition not supported in this browser. Try Chrome or Edge.');
+      setConnectionState('error');
+      return;
+    }
+
+    try {
+      // Request microphone permission
+      await navigator.mediaDevices.getUserMedia({ audio: true });
+      
+      // Start audio monitoring for visualization
+      await startAudioMonitoring();
+
+      const recognition = new SpeechRecognition();
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.lang = 'en-US';
+      recognition.maxAlternatives = 1;
+
+      recognition.onstart = () => {
+        isListeningRef.current = true;
+        setIsConnected(true);
+        setConnectionState('connected');
+        
+        // Welcome message
+        onEventRef.current?.({ 
+          kind: 'transcript', 
+          message: { role: 'agent', text: 'Voice connected! I\'m listening. Tell me who is at the door.' }
+        });
+        speak('Voice connected. Tell me who is at the door.');
+      };
+
+      recognition.onresult = (event) => {
+        let interimTranscript = '';
+        let finalTranscript = '';
+
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const transcript = event.results[i][0].transcript;
+          if (event.results[i].isFinal) {
+            finalTranscript += transcript;
+          } else {
+            interimTranscript += transcript;
+          }
+        }
+
+        // Show interim results
+        if (interimTranscript) {
+          onEventRef.current?.({ 
+            kind: 'transcript', 
+            message: { role: 'visitor', text: interimTranscript, isPartial: true }
+          });
+        }
+
+        // Process final results
+        if (finalTranscript) {
+          onEventRef.current?.({ 
+            kind: 'transcript', 
+            message: { role: 'visitor', text: finalTranscript }
+          });
+          onEventRef.current?.({ 
+            kind: 'visitor_claim', 
+            text: finalTranscript 
+          });
+        }
+      };
+
+      recognition.onerror = (event) => {
+        console.error('Speech recognition error:', event.error);
+        if (event.error === 'not-allowed') {
+          setLastError('Microphone access denied. Please allow microphone access.');
+          setConnectionState('error');
+          disconnect();
+        } else if (event.error === 'no-speech') {
+          // Restart recognition if no speech detected
+          if (isListeningRef.current && recognitionRef.current) {
+            try {
+              recognitionRef.current.start();
+            } catch (e) {
+              // Already started
+            }
+          }
+        }
+      };
+
+      recognition.onend = () => {
+        // Auto-restart if still connected
+        if (isListeningRef.current && recognitionRef.current) {
+          try {
+            recognitionRef.current.start();
+          } catch (e) {
+            // Already started or stopped
+          }
+        }
+      };
+
+      recognitionRef.current = recognition;
+      recognition.start();
+
+    } catch (err) {
+      console.error('Voice connection failed:', err);
+      setLastError(err.message || 'Could not access microphone.');
+      setConnectionState('error');
+      disconnect();
+    }
+  }, [disconnect, speak, startAudioMonitoring]);
+
+  // Expose speak function for external use
+  const speakResponse = useCallback((text) => {
+    speak(text);
+  }, [speak]);
+
+  return {
+    connect,
+    disconnect,
+    sendText: () => false, // Not used in browser mode - claims go through recognition
+    speakResponse,
+    isConnected,
+    isSpeaking,
+    isUserSpeaking,
+    connectionState,
+    lastError,
+    audioLevel,
+  };
+}
+
+/**
+ * WebSocket-based voice for backend connection
+ */
+function useWebSocketVoice(onEvent, options = {}) {
   const [isConnected, setIsConnected] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [isUserSpeaking, setIsUserSpeaking] = useState(false);
@@ -150,11 +415,10 @@ export function useVoice(onEvent, options = {}) {
       ws.binaryType = 'blob';
       wsRef.current = ws;
 
-      // Connection timeout - fail fast if backend is unavailable
       const connectionTimeout = setTimeout(() => {
         if (ws.readyState !== WebSocket.OPEN) {
           ws.close();
-          setLastError('Voice server unavailable. Running in demo mode - use text input instead.');
+          setLastError('Voice server unavailable.');
           setConnectionState('error');
           stopMic();
         }
@@ -200,27 +464,15 @@ export function useVoice(onEvent, options = {}) {
 
       ws.onerror = () => {
         clearTimeout(connectionTimeout);
-        setLastError('Voice server unavailable. Use text input in demo mode.');
+        setLastError('Voice server unavailable.');
         setConnectionState('error');
         stopMic();
       };
 
       processor.onaudioprocess = (event) => {
-        if (ws.readyState !== WebSocket.OPEN) {
-          return;
-        }
-
-        if (pauseInputRef.current) {
-          speechHangoverRef.current = 0;
-          preRollFramesRef.current = [];
-          return;
-        }
-
-        if (isPlayingRef.current) {
-          speechHangoverRef.current = 0;
-          preRollFramesRef.current = [];
-          return;
-        }
+        if (ws.readyState !== WebSocket.OPEN) return;
+        if (pauseInputRef.current) return;
+        if (isPlayingRef.current) return;
 
         const inputData = event.inputBuffer.getChannelData(0);
         let energy = 0;
@@ -230,7 +482,6 @@ export function useVoice(onEvent, options = {}) {
 
         const rms = Math.sqrt(energy / inputData.length);
         
-        // Smooth audio level for UI visualization
         audioLevelSmoothRef.current = (audioLevelSmoothRef.current * 0.7) + (rms * 0.3);
         const normalizedLevel = Math.min(1, audioLevelSmoothRef.current / 0.15);
         setAudioLevel(normalizedLevel);
@@ -295,19 +546,16 @@ export function useVoice(onEvent, options = {}) {
       setIsConnected(false);
       setIsSpeaking(false);
     }
-  }, [onEvent, playNextAudio, stopMic]);
+  }, [playNextAudio, stopMic]);
 
   const sendText = useCallback((text) => {
     const payload = text.trim();
-    if (!payload) {
-      return false;
-    }
+    if (!payload) return false;
 
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({ type: 'visitor_claim', text: payload }));
       return true;
     }
-
     return false;
   }, []);
 
@@ -315,6 +563,7 @@ export function useVoice(onEvent, options = {}) {
     connect,
     disconnect,
     sendText,
+    speakResponse: () => {}, // No-op for WebSocket mode
     isConnected,
     isSpeaking,
     isUserSpeaking,
@@ -322,4 +571,14 @@ export function useVoice(onEvent, options = {}) {
     lastError,
     audioLevel,
   };
+}
+
+/**
+ * Main voice hook - automatically selects browser or WebSocket implementation
+ */
+export function useVoice(onEvent, options = {}) {
+  if (USE_BROWSER_SPEECH) {
+    return useBrowserVoice(onEvent);
+  }
+  return useWebSocketVoice(onEvent, options);
 }

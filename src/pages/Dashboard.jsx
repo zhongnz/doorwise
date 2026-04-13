@@ -196,8 +196,9 @@ const Dashboard = () => {
     });
   }, []);
 
-  // Voice hook
-  const { connect, disconnect, sendText, isConnected, isSpeaking, connectionState, lastError } = useVoice(
+  // Voice hook - speakResponse is used in browser speech mode to speak responses aloud
+  const voiceCallbackRef = useRef(null);
+  const { connect, disconnect, sendText, speakResponse, isConnected, isSpeaking, connectionState, lastError } = useVoice(
     (event) => {
       if (event.kind === 'transcript') {
         if (sessionLocked && event.message.role === 'visitor') return;
@@ -208,6 +209,10 @@ const Dashboard = () => {
       }
       if (event.kind === 'turn_complete') {
         setTranscript((prev) => finalizeTranscriptMessages(prev));
+      }
+      // Handle voice claims from browser speech recognition
+      if (event.kind === 'visitor_claim' && event.text) {
+        voiceCallbackRef.current?.(event.text);
       }
     },
     { pauseInput: status === DECISION_STATUS.VERIFYING || sessionLocked, initialContext: voiceContext }
@@ -372,6 +377,7 @@ const Dashboard = () => {
       if (data.isConversational) {
         await new Promise(resolve => setTimeout(resolve, 500));
         appendTranscript({ role: 'agent', text: data.response });
+        speakResponse?.(data.response);
         return;
       }
       
@@ -386,7 +392,9 @@ const Dashboard = () => {
       setMatchedRecords([]);
       setConfidence('');
       setPlaybook('');
-      appendTranscript({ role: 'agent', text: 'Let me check our building records...' });
+      const checkingMsg = 'Let me check our building records.';
+      appendTranscript({ role: 'agent', text: checkingMsg });
+      speakResponse?.(checkingMsg);
       
       await new Promise(resolve => setTimeout(resolve, 1500));
       
@@ -399,7 +407,9 @@ const Dashboard = () => {
       setMatchedRecords(data.matched_records || []);
       setConfidence(data.confidence || '');
       setPlaybook(data.playbook || '');
-      appendTranscript({ role: 'agent', text: data.recommended_script || data.recommended_action });
+      const responseText = data.recommended_script || data.recommended_action;
+      appendTranscript({ role: 'agent', text: responseText });
+      speakResponse?.(responseText);
 
       // Save incident
       const incident = {
@@ -483,7 +493,7 @@ const Dashboard = () => {
       setPlaybook('manual-review');
       appendTranscript({ role: 'agent', text: 'Verification service unavailable. Defaulting to manual review.' });
     }
-  }, [address, buildingContext, appendTranscript, getDemoResponse]);
+  }, [address, buildingContext, appendTranscript, getDemoResponse, speakResponse]);
 
   // Effects
   useEffect(() => {
@@ -508,6 +518,15 @@ const Dashboard = () => {
       }
     };
   }, [disconnect, navigate]);
+
+  // Set up voice callback to trigger verification from speech recognition
+  useEffect(() => {
+    voiceCallbackRef.current = (claim) => {
+      if (!sessionLocked && claim.trim()) {
+        triggerVerification(claim.trim());
+      }
+    };
+  }, [sessionLocked, triggerVerification]);
 
   // Camera setup
   useEffect(() => {
