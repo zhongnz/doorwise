@@ -745,13 +745,15 @@ const Dashboard = () => {
         const lowerClaim = claim.toLowerCase();
         const isInspector = lowerClaim.includes('hpd') || lowerClaim.includes('inspector') || lowerClaim.includes('dob');
         
-        // Simulate ID review result
+        // Simulate ID review result - field names must match IdReviewPanel expectations
         const mockIdReview = {
           id_detected: true,
-          id_type: isInspector ? 'Government Badge' : 'Driver License',
-          name_extracted: isInspector ? 'John Smith' : 'Jane Doe',
-          organization_extracted: isInspector ? 'NYC HPD' : null,
-          badge_number: isInspector ? 'HPD-2024-8847' : null,
+          document_type: isInspector ? 'Government Badge' : 'Driver License',
+          person_name: isInspector ? 'John Smith' : 'Jane Doe',
+          organization_name: isInspector ? 'NYC HPD' : null,
+          badge_or_employee_id: isInspector ? 'HPD-2024-8847' : null,
+          evidence_quality: 'Good',
+          model: 'DoorWise Vision v1',
           expiration_status: 'valid',
           confidence: 0.92,
           trusted_organization_match: isInspector ? 'HPD' : null,
