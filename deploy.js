@@ -1,21 +1,25 @@
 const { execSync } = require('child_process');
 const path = require('path');
 
+// The project directory is /vercel/share/v0-project
+const projectDir = '/vercel/share/v0-project';
+
 console.log('🚀 Deploying DoorWise to Vercel...\n');
+console.log('📂 Project directory:', projectDir);
 
 try {
-  // Configure git
-  console.log('🔧 Configuring git...');
-  execSync('git config user.name "v0[bot]"', { stdio: 'inherit', cwd: path.dirname(__filename) });
-  execSync('git config user.email "v0[bot]@users.noreply.github.com"', { stdio: 'inherit', cwd: path.dirname(__filename) });
+  // Configure git (local)
+  console.log('\n🔧 Configuring git...');
+  execSync('git config user.name "v0[bot]"', { stdio: 'inherit', cwd: projectDir });
+  execSync('git config user.email "v0[bot]@users.noreply.github.com"', { stdio: 'inherit', cwd: projectDir });
 
   // Check status
   console.log('\n📋 Current git status:');
-  execSync('git status', { stdio: 'inherit', cwd: path.dirname(__filename) });
+  execSync('git status', { stdio: 'inherit', cwd: projectDir });
 
   // Stage changes
   console.log('\n📝 Staging all changes...');
-  execSync('git add -A', { stdio: 'inherit', cwd: path.dirname(__filename) });
+  execSync('git add -A', { stdio: 'inherit', cwd: projectDir });
 
   // Commit
   console.log('\n💾 Creating commit...');
@@ -33,11 +37,11 @@ try {
 
 Co-authored-by: v0[bot] <v0[bot]@users.noreply.github.com>`;
 
-  execSync(`git commit -m "${commitMessage}"`, { stdio: 'inherit', cwd: path.dirname(__filename) });
+  execSync(`git commit -m "${commitMessage}"`, { stdio: 'inherit', cwd: projectDir });
 
   // Push
   console.log('\n🔗 Pushing to GitHub...');
-  execSync('git push origin project-overview', { stdio: 'inherit', cwd: path.dirname(__filename) });
+  execSync('git push origin project-overview', { stdio: 'inherit', cwd: projectDir });
 
   console.log('\n✅ Successfully deployed to GitHub!');
   console.log('   Vercel deployment will start automatically.\n');
