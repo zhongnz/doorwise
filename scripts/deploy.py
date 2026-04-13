@@ -3,50 +3,41 @@ import subprocess
 import os
 import sys
 
-# Get current working directory and navigate to project
-cwd = os.getcwd()
-print(f'Current directory: {cwd}')
-print(f'Files in current directory: {os.listdir(cwd)}')
+# Get project directory from pwd or use common paths
+project_dir = os.getcwd()
+print(f'Current working directory: {project_dir}')
 
-# Check if we're already in the project or need to navigate
-if os.path.exists('package.json') and os.path.exists('.git'):
-    project_dir = cwd
-else:
-    # Try common paths
-    possible_paths = [
-        '/vercel/share/v0-project',
-        os.path.expanduser('~/v0-project'),
-        './v0-project',
-    ]
-    
-    project_dir = None
-    for path in possible_paths:
-        if os.path.exists(os.path.join(path, 'package.json')):
-            project_dir = path
+# If not in project root, search for it
+if not os.path.exists(os.path.join(project_dir, 'package.json')):
+    # Search parent directories
+    for parent in ['/vercel/share/v0-project', os.path.expanduser('~'), '/home/user']:
+        if os.path.exists(os.path.join(parent, 'package.json')):
+            project_dir = parent
             break
-    
-    if not project_dir:
-        print('Error: Could not find project directory')
-        sys.exit(1)
 
-os.chdir(project_dir)
-print(f'Changed to: {project_dir}\n')
+print(f'Project directory: {project_dir}')
+print(f'Has package.json: {os.path.exists(os.path.join(project_dir, "package.json"))}')
+print(f'Has .git: {os.path.exists(os.path.join(project_dir, ".git"))}\n')
+
+if not os.path.exists(os.path.join(project_dir, '.git')):
+    print('Error: .git directory not found')
+    sys.exit(1)
 
 print('Deploying DoorWise to Vercel...\n')
 
 try:
     # Configure git
     print('Configuring git...')
-    subprocess.run(['git', 'config', 'user.name', 'v0[bot]'], check=True, capture_output=True)
-    subprocess.run(['git', 'config', 'user.email', 'v0[bot]@users.noreply.github.com'], check=True, capture_output=True)
+    subprocess.run(['git', 'config', 'user.name', 'v0[bot]'], check=True, cwd=project_dir, capture_output=True)
+    subprocess.run(['git', 'config', 'user.email', 'v0[bot]@users.noreply.github.com'], check=True, cwd=project_dir, capture_output=True)
     
     # Check status
-    print('\nCurrent git status:')
-    result = subprocess.run(['git', 'status'], check=True)
+    print('Current git status:')
+    subprocess.run(['git', 'status'], check=True, cwd=project_dir)
     
     # Stage changes
     print('\nStaging all changes...')
-    subprocess.run(['git', 'add', '-A'], check=True)
+    subprocess.run(['git', 'add', '-A'], check=True, cwd=project_dir, capture_output=True)
     
     # Commit
     print('Creating commit...')
@@ -64,11 +55,11 @@ try:
 
 Co-authored-by: v0[bot] <v0[bot]@users.noreply.github.com>"""
     
-    subprocess.run(['git', 'commit', '-m', commit_message], check=True)
+    subprocess.run(['git', 'commit', '-m', commit_message], check=True, cwd=project_dir)
     
     # Push
     print('\nPushing to GitHub...')
-    subprocess.run(['git', 'push', 'origin', 'project-overview'], check=True)
+    subprocess.run(['git', 'push', 'origin', 'project-overview'], check=True, cwd=project_dir)
     
     print('\nSuccessfully deployed to GitHub!')
     print('Vercel deployment will start automatically.\n')
@@ -82,3 +73,4 @@ except subprocess.CalledProcessError as error:
 except Exception as error:
     print(f'\nDeployment failed: {error}')
     sys.exit(1)
+
