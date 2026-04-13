@@ -1,38 +1,59 @@
-/* Setup Page Specific Styles */
+/* ===================== */
+/* SETUP PAGE STYLES     */
+/* ===================== */
+
 .setup-container {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  width: 100%;
   min-height: 100vh;
-  padding: 0 24px;
-}
-
-.setup-nav {
   width: 100%;
-  max-width: 1200px;
-  padding: 32px 0;
+  max-width: 720px;
+  margin: 0 auto;
+  padding: var(--space-6);
 }
 
-.setup-content {
+/* ===================== */
+/* HEADER                */
+/* ===================== */
+
+.setup-header {
+  padding: var(--space-4) 0 var(--space-6);
+}
+
+/* ===================== */
+/* MAIN CONTENT          */
+/* ===================== */
+
+.setup-main {
   flex: 1;
   display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
-  padding-bottom: 64px;
+  flex-direction: column;
+  gap: var(--space-6);
 }
 
+/* Progress */
+.setup-progress {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.progress-label {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* Card */
 .setup-card {
-  width: 100%;
-  max-width: 640px;
-  padding: 40px;
+  padding: var(--space-8);
+  box-shadow: var(--shadow-xl);
   position: relative;
   overflow: hidden;
-  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.4);
 }
 
-/* Subtle gradient glow behind the card content */
 .setup-card::before {
   content: '';
   position: absolute;
@@ -40,203 +61,226 @@
   left: -50%;
   width: 200%;
   height: 200%;
-  background: radial-gradient(circle at center, rgba(0, 212, 255, 0.05) 0%, transparent 50%);
+  background: radial-gradient(
+    circle at center,
+    rgba(0, 212, 255, 0.04) 0%,
+    transparent 50%
+  );
   pointer-events: none;
   z-index: 0;
 }
 
-.setup-header {
-  position: relative;
-  z-index: 1;
-  text-align: center;
-  margin-bottom: 32px;
-}
+/* ===================== */
+/* STEP CONTENT          */
+/* ===================== */
 
-.icon-wrapper {
-  width: 64px;
-  height: 64px;
-  background: rgba(0, 212, 255, 0.1);
-  border-radius: 16px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin: 0 auto 24px;
-  box-shadow: 0 8px 16px rgba(0, 212, 255, 0.1);
-}
-
-.setup-header h2 {
-  font-size: 2rem;
-  margin-bottom: 12px;
-}
-
-.setup-header p {
-  color: var(--text-secondary);
-  font-size: 0.95rem;
-  line-height: 1.6;
-}
-
-.setup-header-actions {
-  display: flex;
-  justify-content: center;
-  margin-top: 20px;
-}
-
-.demo-fill-button {
-  padding: 10px 18px;
-  font-size: 0.95rem;
-}
-
-.setup-form {
+.step-content {
   position: relative;
   z-index: 1;
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: var(--space-6);
+}
+
+.step-header {
+  text-align: center;
+}
+
+.step-icon {
+  width: 72px;
+  height: 72px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-xl);
+  margin: 0 auto var(--space-5);
+  box-shadow: var(--shadow-md);
+}
+
+.step-icon.blue {
+  background: linear-gradient(135deg, var(--accent-blue-muted), rgba(0, 212, 255, 0.2));
+  color: var(--accent-blue);
+}
+
+.step-icon.amber {
+  background: linear-gradient(135deg, var(--accent-amber-muted), rgba(245, 158, 11, 0.2));
+  color: var(--accent-amber);
+}
+
+.step-icon.green {
+  background: linear-gradient(135deg, var(--status-verified-muted), rgba(16, 185, 129, 0.2));
+  color: var(--status-verified);
+}
+
+.step-header h2 {
+  margin-bottom: var(--space-3);
+  font-size: 1.75rem;
+}
+
+.step-header p {
+  font-size: 1rem;
+  max-width: 480px;
+  margin: 0 auto;
+}
+
+/* ===================== */
+/* FORM GRID             */
+/* ===================== */
+
+.form-grid {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
 }
 
 .form-row {
   display: flex;
-  gap: 16px;
+  gap: var(--space-4);
 }
 
-.form-group {
+.form-row > * {
+  flex: 1;
+}
+
+.form-row > .flex-2 {
+  flex: 2;
+}
+
+/* ===================== */
+/* STEP ACTIONS          */
+/* ===================== */
+
+.step-actions {
   display: flex;
-  flex-direction: column;
-  gap: 8px;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border-glass);
+  margin-top: var(--space-2);
 }
 
-.flex-1 { flex: 1; }
-.flex-2 { flex: 2; }
-
-.form-group label {
-  font-size: 0.85rem;
-  font-weight: 500;
-  color: var(--text-secondary);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+.step-actions > :only-child {
+  margin-left: auto;
 }
 
-.form-group input,
-.form-group select,
-.form-group textarea {
-  background: rgba(0, 0, 0, 0.4);
-  border: 1px solid var(--border-glass);
-  color: #fff;
-  font-family: 'Inter', sans-serif;
-  font-size: 1rem;
-  padding: 12px 16px;
-  border-radius: 8px;
-  transition: all 0.2s ease;
-  width: 100%;
+/* ===================== */
+/* REVIEW GRID           */
+/* ===================== */
+
+.review-grid {
+  display: grid;
+  gap: var(--space-4);
 }
 
-.form-group input:focus,
-.form-group select:focus,
-.form-group textarea:focus {
-  outline: none;
-  border-color: var(--accent-blue);
-  box-shadow: 0 0 0 2px rgba(0, 212, 255, 0.2);
+.review-card {
+  padding: var(--space-4);
 }
 
-.form-group input::placeholder,
-.form-group textarea::placeholder {
-  color: rgba(255, 255, 255, 0.2);
-}
-
-.form-group textarea {
-  min-height: 88px;
-  resize: vertical;
-}
-
-.data-disclaimer {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  background: rgba(255, 255, 255, 0.03);
-  padding: 16px;
-  border-radius: 8px;
-  font-size: 0.85rem;
-  color: var(--text-muted);
-  line-height: 1.5;
-  margin: 8px 0;
-  border-left: 3px solid var(--accent-orange);
-}
-
-.data-disclaimer svg {
-  flex-shrink: 0;
-  color: var(--accent-orange);
-  margin-top: 2px;
-}
-
-.building-context-panel {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  padding: 18px;
-  border-radius: 12px;
-  border: 1px solid var(--border-glass);
-  background: rgba(255, 255, 255, 0.03);
-}
-
-.building-context-header {
+.review-card-header {
   display: flex;
   align-items: center;
-  gap: 10px;
-  color: var(--text-primary);
-  font-family: 'Outfit', sans-serif;
+  gap: var(--space-2);
+  font-size: 0.8rem;
   font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-secondary);
+  margin-bottom: var(--space-3);
 }
 
-.building-context-note {
-  color: var(--text-muted);
-  font-size: 0.85rem;
-  line-height: 1.5;
-}
-
-.form-error {
+.review-card-body {
   display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  padding: 14px 16px;
-  border-radius: 10px;
-  background: rgba(255, 59, 59, 0.08);
-  border: 1px solid rgba(255, 59, 59, 0.22);
-  color: #ffb1b1;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.review-card-body strong {
+  font-size: 1.1rem;
+  color: var(--text-primary);
+}
+
+.review-card-body span {
   font-size: 0.9rem;
+  color: var(--text-muted);
 }
 
-.w-full {
-  width: 100%;
-  justify-content: center;
-}
-
-.loading-state {
+.review-pills {
   display: flex;
-  align-items: center;
-  gap: 12px;
+  flex-wrap: wrap;
+  gap: var(--space-2);
 }
 
-.spinner {
-  width: 20px;
-  height: 20px;
-  border: 2px solid rgba(0,0,0,0.1);
-  border-left-color: #000;
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
+/* ===================== */
+/* HELP SECTION          */
+/* ===================== */
+
+.setup-help {
+  text-align: center;
+  padding: var(--space-4);
 }
 
-@keyframes spin {
-  to { transform: rotate(360deg); }
+.setup-help p {
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  max-width: 480px;
+  margin: 0 auto;
 }
+
+/* ===================== */
+/* ANIMATIONS            */
+/* ===================== */
+
+.animate-fade-in {
+  animation: fade-in 0.3s ease-out;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ===================== */
+/* RESPONSIVE            */
+/* ===================== */
 
 @media (max-width: 600px) {
-  .setup-card {
-    padding: 24px;
-    border-radius: 16px;
+  .setup-container {
+    padding: var(--space-4);
   }
-  
+
+  .setup-card {
+    padding: var(--space-5);
+  }
+
   .form-row {
     flex-direction: column;
-    gap: 20px;
+    gap: var(--space-4);
+  }
+
+  .step-actions {
+    flex-direction: column;
+  }
+
+  .step-actions > :only-child {
+    margin-left: 0;
+  }
+
+  .step-actions button {
+    width: 100%;
+  }
+
+  .step-icon {
+    width: 64px;
+    height: 64px;
+  }
+
+  .step-header h2 {
+    font-size: 1.5rem;
   }
 }

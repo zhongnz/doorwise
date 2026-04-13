@@ -1,22 +1,16 @@
-import { useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useRef, useState, useCallback } from 'react';
+import { useNavigate, Link } from 'react-router-dom';
 import {
-  Activity,
   AlertTriangle,
   Bell,
   BellRing,
-  Camera,
-  CheckCircle2,
+  ChevronDown,
   Database,
   MapPin,
   Mic,
-  RotateCcw,
   Send,
-  ShieldAlert,
+  Settings,
   ShieldCheck,
-  ShieldX,
-  Upload,
-  Video,
 } from 'lucide-react';
 import { useVoice } from '../hooks/useVoice';
 import {
@@ -27,148 +21,93 @@ import {
   normalizeConversationText,
   terminalDecisions,
 } from '../lib/claimIntake';
+import {
+  DECISION_STATUS,
+  DECISION_LABELS,
+  DECISION_ICONS,
+  DEFAULT_TRANSCRIPT,
+  EMPTY_BUILDING_CONTEXT,
+  STORAGE_KEYS,
+  API_ENDPOINTS,
+} from '../lib/constants';
+import { Button, Badge, Card, Alert, Spinner } from '../components/common';
+import {
+  VoiceVisualizer,
+  ConnectionStatus,
+  TranscriptBubble,
+  DecisionCard,
+  ActionGrid,
+  IdReviewCard,
+  DataChecks,
+  IncidentItem,
+  CameraPanel,
+} from '../components/dashboard';
 import './Dashboard.css';
 
-const defaultTranscript = [{ role: 'agent', text: 'DoorWise is ready. Tell me who is here and why they need building access.' }];
-
-const emptyBuildingContext = {
-  building_name: '',
-  management_phone: '',
-  super_phone: '',
-  approved_vendors: [],
-  trusted_id_organizations: [],
-};
-
-const storageKeys = {
-  address: 'doorwise_address',
-  addressValidation: 'doorwise_address_validation',
-  buildingContext: 'doorwise_building_context',
-  incidents: 'doorwise_incidents',
-};
-
-const verdictIcons = {
-  LISTENING: ShieldCheck,
-  VERIFYING: Database,
-  PROCEED_AFTER_ID_CHECK: ShieldCheck,
-  CALL_TO_CONFIRM: ShieldAlert,
-  DO_NOT_OPEN: ShieldX,
-  UNKNOWN: ShieldAlert,
-};
-
-const decisionLabels = {
-  LISTENING: 'Waiting',
-  VERIFYING: 'Checking',
-  PROCEED_AFTER_ID_CHECK: 'Proceed After ID Check',
-  CALL_TO_CONFIRM: 'Call To Confirm',
-  DO_NOT_OPEN: 'Do Not Open',
-  UNKNOWN: 'Manual Review',
-};
-
-const idAlignmentLabels = {
-  match: 'Matches claim',
-  partial: 'Partially matches',
-  mismatch: 'Does not match',
-  unclear: 'Unclear match',
-};
-
-const abbreviationForText = (value = '') => normalizeConversationText(value)
-  .split(' ')
-  .filter((word) => word && !['of', 'the', 'and'].includes(word))
-  .map((word) => word[0])
-  .join('');
-
-const findTrustedOrganizationCandidate = (claimText, organizations = []) => {
-  const normalizedClaim = normalizeConversationText(claimText);
-  if (!normalizedClaim) {
-    return '';
-  }
-
-  for (const organization of organizations) {
-    const normalizedOrganization = normalizeConversationText(organization);
-    const organizationAbbreviation = abbreviationForText(organization);
-
-    if (
-      (normalizedOrganization && normalizedClaim.includes(normalizedOrganization))
-      || (organizationAbbreviation && normalizedClaim.includes(organizationAbbreviation))
-    ) {
-      return organization;
-    }
-  }
-
-  return '';
-};
-
-const mergeTranscriptText = (previousText, nextText) => {
-  const current = previousText || '';
-  const incoming = nextText || '';
-
-  if (!current) {
-    return incoming;
-  }
-
-  if (!incoming) {
-    return current;
-  }
-
-  if (incoming.startsWith(current) || current.startsWith(incoming)) {
-    return incoming.length >= current.length ? incoming : current;
-  }
-
-  if (current.endsWith(incoming)) {
-    return current;
-  }
-
-  return `${current}${incoming}`;
-};
-
-const finalizeTranscriptMessages = (messages) => messages.map((message) => {
-  if (message.finished === false) {
-    return {
-      ...message,
-      finished: true,
-    };
-  }
-
-  return message;
-});
-
+// Helper functions
 const loadStoredJson = (key, fallback) => {
   try {
     const keys = Array.isArray(key) ? key : [key];
     for (const candidate of keys) {
       const raw = localStorage.getItem(candidate);
-      if (raw) {
-        return JSON.parse(raw);
-      }
+      if (raw) return JSON.parse(raw);
     }
     return fallback;
-  } catch (error) {
+  } catch {
     return fallback;
   }
 };
 
+const abbreviationForText = (value = '') =>
+  normalizeConversationText(value)
+    .split(' ')
+    .filter((word) => word && !['of', 'the', 'and'].includes(word))
+    .map((word) => word[0])
+    .join('');
+
+const findTrustedOrganizationCandidate = (claimText, organizations = []) => {
+  const normalizedClaim = normalizeConversationText(claimText);
+  if (!normalizedClaim) return '';
+
+  for (const org of organizations) {
+    const normalizedOrg = normalizeConversationText(org);
+    const orgAbbrev = abbreviationForText(org);
+    if (
+      (normalizedOrg && normalizedClaim.includes(normalizedOrg)) ||
+      (orgAbbrev && normalizedClaim.includes(orgAbbrev))
+    ) {
+      return org;
+    }
+  }
+  return '';
+};
+
+const mergeTranscriptText = (prev, next) => {
+  if (!prev) return next || '';
+  if (!next) return prev;
+  if (next.startsWith(prev) || prev.startsWith(next)) {
+    return next.length >= prev.length ? next : prev;
+  }
+  if (prev.endsWith(next)) return prev;
+  return `${prev}${next}`;
+};
+
+const finalizeTranscriptMessages = (messages) =>
+  messages.map((msg) =>
+    msg.finished === false ? { ...msg, finished: true } : msg
+  );
+
 const buildVoiceContext = (address, buildingContext) => {
-  const trustedOrganizations = (buildingContext?.trusted_id_organizations || []).filter(Boolean);
+  const trustedOrgs = (buildingContext?.trusted_id_organizations || []).filter(Boolean);
   const approvedVendors = (buildingContext?.approved_vendors || []).filter(Boolean);
-  const parts = [
-    'System note for DoorWise only. Use this silently and do not read it aloud.',
-  ];
+  const parts = ['System note for DoorWise only. Use this silently and do not read it aloud.'];
 
-  if (address?.label) {
-    parts.push(`Building address: ${address.label}.`);
+  if (address?.label) parts.push(`Building address: ${address.label}.`);
+  if (buildingContext?.building_name) parts.push(`Building name: ${buildingContext.building_name}.`);
+  if (trustedOrgs.length) {
+    parts.push(`Trusted organizations allowed by visible ID policy: ${trustedOrgs.join(', ')}.`);
+    parts.push('If a visitor says they are from one of those organizations, ask them to hold that ID to the camera.');
   }
-
-  if (buildingContext?.building_name) {
-    parts.push(`Building name: ${buildingContext.building_name}.`);
-  }
-
-  if (trustedOrganizations.length) {
-    parts.push(`Trusted organizations allowed by visible ID policy: ${trustedOrganizations.join(', ')}.`);
-    parts.push(
-      'If a visitor says they are from one of those organizations for class, work, school, or campus access, ask them to hold that ID to the camera instead of repeating the same company question.',
-    );
-  }
-
   if (approvedVendors.length) {
     parts.push(`Approved vendors on file: ${approvedVendors.join(', ')}.`);
   }
@@ -181,17 +120,21 @@ const Dashboard = () => {
   const videoRef = useRef(null);
   const idFileInputRef = useRef(null);
   const cameraStreamRef = useRef(null);
-  const lastAutoClaimSignatureRef = useRef('');
+  const lastAutoClaimRef = useRef('');
   const autoVerifyTimeoutRef = useRef(null);
-  const terminalVoiceNoticeRef = useRef(false);
+  const terminalNoticeRef = useRef(false);
+  const transcriptEndRef = useRef(null);
 
+  // Core state
   const [address, setAddress] = useState(null);
   const [addressValidation, setAddressValidation] = useState(null);
-  const [buildingContext, setBuildingContext] = useState(emptyBuildingContext);
-  const [status, setStatus] = useState('LISTENING');
-  const [transcript, setTranscript] = useState(defaultTranscript);
+  const [buildingContext, setBuildingContext] = useState(EMPTY_BUILDING_CONTEXT);
+  const [status, setStatus] = useState(DECISION_STATUS.LISTENING);
+  const [transcript, setTranscript] = useState(DEFAULT_TRANSCRIPT);
   const [currentClaim, setCurrentClaim] = useState('');
   const [claimInput, setClaimInput] = useState('');
+
+  // Decision state
   const [datasetResults, setDatasetResults] = useState([]);
   const [decisionReasoning, setDecisionReasoning] = useState('');
   const [recommendedScript, setRecommendedScript] = useState('');
@@ -200,6 +143,8 @@ const Dashboard = () => {
   const [matchedRecords, setMatchedRecords] = useState([]);
   const [confidence, setConfidence] = useState('');
   const [playbook, setPlaybook] = useState('');
+
+  // UI state
   const [incidentLog, setIncidentLog] = useState([]);
   const [cameraReady, setCameraReady] = useState(false);
   const [cameraError, setCameraError] = useState('');
@@ -208,68 +153,66 @@ const Dashboard = () => {
   const [idReviewError, setIdReviewError] = useState('');
   const [idReviewPrompt, setIdReviewPrompt] = useState('');
   const [notificationPermission, setNotificationPermission] = useState(
-    typeof Notification === 'undefined' ? 'unsupported' : Notification.permission,
+    typeof Notification === 'undefined' ? 'unsupported' : Notification.permission
   );
+
   const sessionLocked = terminalDecisions.includes(status);
   const voiceContext = buildVoiceContext(address, buildingContext);
 
-  const appendTranscript = (message) => {
-    setTranscript((previous) => {
+  // Transcript management
+  const appendTranscript = useCallback((message) => {
+    setTranscript((prev) => {
       const isPartial = message.finished === false;
-      const lastMessage = previous[previous.length - 1];
+      const last = prev[prev.length - 1];
 
-      if (isPartial && lastMessage && lastMessage.role === message.role && lastMessage.finished === false) {
-        const updated = [...previous];
+      if (isPartial && last?.role === message.role && last?.finished === false) {
+        const updated = [...prev];
         updated[updated.length - 1] = {
-          ...lastMessage,
-          text: mergeTranscriptText(lastMessage.text, message.text),
+          ...last,
+          text: mergeTranscriptText(last.text, message.text),
           finished: false,
         };
         return updated;
       }
 
-      if (
-        message.finished === true
-        && lastMessage
-        && lastMessage.role === message.role
-        && lastMessage.finished === false
-      ) {
-        const updated = [...previous];
+      if (message.finished === true && last?.role === message.role && last?.finished === false) {
+        const updated = [...prev];
         updated[updated.length - 1] = {
-          ...lastMessage,
-          text: mergeTranscriptText(lastMessage.text, message.text),
+          ...last,
+          text: mergeTranscriptText(last.text, message.text),
           finished: true,
         };
         return updated;
       }
 
-      if (lastMessage && lastMessage.role === message.role && lastMessage.text === message.text) {
-        return previous;
+      if (last?.role === message.role && last?.text === message.text) {
+        return prev;
       }
 
-      return [...previous, message];
+      return [...prev, message];
     });
-  };
+  }, []);
 
-  const { connect, disconnect, sendText, isConnected, isSpeaking, connectionState, lastError } = useVoice((event) => {
-    if (event.kind === 'transcript') {
-      if (sessionLocked && event.message.role === 'visitor') {
-        return;
+  // Voice hook
+  const { connect, disconnect, sendText, isConnected, isSpeaking, connectionState, lastError } = useVoice(
+    (event) => {
+      if (event.kind === 'transcript') {
+        if (sessionLocked && event.message.role === 'visitor') return;
+        appendTranscript(event.message);
       }
-      appendTranscript(event.message);
-    }
+      if (event.kind === 'error') {
+        appendTranscript({ role: 'agent', text: `Voice error: ${event.text}` });
+      }
+      if (event.kind === 'turn_complete') {
+        setTranscript((prev) => finalizeTranscriptMessages(prev));
+      }
+    },
+    { pauseInput: status === DECISION_STATUS.VERIFYING || sessionLocked, initialContext: voiceContext }
+  );
 
-    if (event.kind === 'error') {
-      appendTranscript({ role: 'agent', text: `Voice error: ${event.text}` });
-    }
-
-    if (event.kind === 'turn_complete') {
-      setTranscript((previous) => finalizeTranscriptMessages(previous));
-    }
-  }, { pauseInput: status === 'VERIFYING' || sessionLocked, initialContext: voiceContext });
-
-  const clearDecisionOutcome = () => {
-    setStatus('LISTENING');
+  // Reset functions
+  const clearDecision = useCallback(() => {
+    setStatus(DECISION_STATUS.LISTENING);
     setCurrentClaim('');
     setDatasetResults([]);
     setDecisionReasoning('');
@@ -283,204 +226,27 @@ const Dashboard = () => {
     setIdReviewError('');
     setIdReviewState('idle');
     setIdReviewPrompt('');
-  };
-
-  const resetSession = () => {
-    if (autoVerifyTimeoutRef.current) {
-      window.clearTimeout(autoVerifyTimeoutRef.current);
-      autoVerifyTimeoutRef.current = null;
-    }
-
-    lastAutoClaimSignatureRef.current = '';
-    terminalVoiceNoticeRef.current = false;
-    disconnect();
-    setTranscript(defaultTranscript);
-    setClaimInput('');
-    clearDecisionOutcome();
-  };
-
-  useEffect(() => {
-    const savedAddress = loadStoredJson(storageKeys.address, null);
-    const savedValidation = loadStoredJson(storageKeys.addressValidation, null);
-
-    if (!savedAddress) {
-      navigate('/setup');
-      return undefined;
-    }
-
-    setAddress(savedAddress);
-    if (savedValidation) {
-      setAddressValidation(savedValidation);
-    }
-
-    setBuildingContext(loadStoredJson(storageKeys.buildingContext, emptyBuildingContext));
-    setIncidentLog(loadStoredJson(storageKeys.incidents, []));
-
-    return () => {
-      if (autoVerifyTimeoutRef.current) {
-        window.clearTimeout(autoVerifyTimeoutRef.current);
-      }
-      disconnect();
-      if (cameraStreamRef.current) {
-        cameraStreamRef.current.getTracks().forEach((track) => track.stop());
-      }
-    };
-  }, [disconnect, navigate]);
-
-  useEffect(() => {
-    let mounted = true;
-
-    const startCamera = async () => {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: 'environment' },
-          audio: false,
-        });
-
-        if (!mounted) {
-          stream.getTracks().forEach((track) => track.stop());
-          return;
-        }
-
-        cameraStreamRef.current = stream;
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-        }
-        setCameraReady(true);
-        setCameraError('');
-      } catch (error) {
-        setCameraReady(false);
-        setCameraError('Camera preview is unavailable. You can still verify visitors manually.');
-      }
-    };
-
-    startCamera();
-
-    return () => {
-      mounted = false;
-    };
   }, []);
 
-  useEffect(() => {
-    if (!cameraStreamRef.current || !videoRef.current) {
-      return;
-    }
-
-    if (videoRef.current.srcObject !== cameraStreamRef.current) {
-      videoRef.current.srcObject = cameraStreamRef.current;
-    }
-
-    videoRef.current.play().catch(() => {
-      setCameraError('Camera is connected, but the browser blocked autoplay. Tap the video area to resume it.');
-    });
-  }, [address, cameraReady]);
-
-  useEffect(() => {
-    if (!lastError) {
-      return;
-    }
-
-    appendTranscript({ role: 'agent', text: `Voice connection issue: ${lastError}` });
-  }, [lastError]);
-
-  useEffect(() => {
-    if (!sessionLocked) {
-      terminalVoiceNoticeRef.current = false;
-      return;
-    }
-
+  const resetSession = useCallback(() => {
     if (autoVerifyTimeoutRef.current) {
-      window.clearTimeout(autoVerifyTimeoutRef.current);
+      clearTimeout(autoVerifyTimeoutRef.current);
       autoVerifyTimeoutRef.current = null;
     }
-
-    if (!isConnected) {
-      return;
-    }
-
-    if (!terminalVoiceNoticeRef.current) {
-      appendTranscript({
-        role: 'agent',
-        text: 'Final decision reached. Reset for the next visitor to resume intake.',
-      });
-      terminalVoiceNoticeRef.current = true;
-    }
-
+    lastAutoClaimRef.current = '';
+    terminalNoticeRef.current = false;
     disconnect();
-  }, [disconnect, isConnected, sessionLocked]);
+    setTranscript(DEFAULT_TRANSCRIPT);
+    setClaimInput('');
+    clearDecision();
+  }, [disconnect, clearDecision]);
 
-  useEffect(() => {
-    if (!currentClaim || !terminalDecisions.includes(status)) {
-      return;
-    }
-
-    if (typeof Notification === 'undefined' || notificationPermission !== 'granted') {
-      return;
-    }
-
-    const title = `DoorWise ${decisionLabels[status] || status}`;
-    const body = `${currentClaim} at ${address?.label || 'your door'}`;
-    const notification = new Notification(title, { body });
-
-    return () => notification.close();
-  }, [address?.label, currentClaim, notificationPermission, status]);
-
-  const saveIncident = (claim, response) => {
-    const nextEntry = {
-      timestamp: new Date().toISOString(),
-      claim,
-      decision: response.decision,
-      playbook: response.playbook,
-      reasoning: response.reasoning,
-    };
-
-    setIncidentLog((previous) => {
-      const nextLog = [nextEntry, ...previous].slice(0, 6);
-      localStorage.setItem(storageKeys.incidents, JSON.stringify(nextLog));
-      return nextLog;
-    });
-  };
-
-  const applyIdPolicyDecision = (reviewPayload) => {
-    if (!reviewPayload?.policy_decision) {
-      return;
-    }
-
-    setStatus(reviewPayload.policy_decision);
-    setConfidence(reviewPayload.policy_confidence || confidence || 'medium');
-    setRecommendedAction(reviewPayload.policy_action || recommendedAction);
-    setRecommendedScript(reviewPayload.policy_script || recommendedScript);
-    setPlaybook(reviewPayload.policy_playbook || 'trusted-id');
-    setIdReviewPrompt('');
-    setDecisionReasoning((previous) => {
-      const policyReasoning = reviewPayload.policy_reasoning || '';
-      if (!policyReasoning) {
-        return previous;
-      }
-      if (!previous) {
-        return policyReasoning;
-      }
-      if (previous.includes(policyReasoning)) {
-        return previous;
-      }
-      return `${previous} ${policyReasoning}`;
-    });
-
-    if (reviewPayload.policy_decision === 'PROCEED_AFTER_ID_CHECK') {
-      appendTranscript({
-        role: 'agent',
-        text: `The ID matches trusted organization ${reviewPayload.trusted_organization_match}. Proceed after a final visual ID check.`,
-      });
-    }
-  };
-
-  const triggerVerification = async (claim) => {
-    if (!address) {
-      return;
-    }
+  // Verification
+  const triggerVerification = useCallback(async (claim) => {
+    if (!address) return;
 
     setCurrentClaim(claim);
-    setStatus('VERIFYING');
+    setStatus(DECISION_STATUS.VERIFYING);
     setDatasetResults([]);
     setDecisionReasoning('');
     setRecommendedScript('');
@@ -489,10 +255,10 @@ const Dashboard = () => {
     setMatchedRecords([]);
     setConfidence('');
     setPlaybook('');
-    appendTranscript({ role: 'agent', text: 'Checking building records and playbook steps now.' });
+    appendTranscript({ role: 'agent', text: 'Checking building records now.' });
 
     try {
-      const response = await fetch('/api/verify', {
+      const response = await fetch(API_ENDPOINTS.VERIFY, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -502,9 +268,7 @@ const Dashboard = () => {
         }),
       });
 
-      if (!response.ok) {
-        throw new Error('Verification failed.');
-      }
+      if (!response.ok) throw new Error('Verification failed.');
 
       const data = await response.json();
       setStatus(data.decision);
@@ -516,664 +280,535 @@ const Dashboard = () => {
       setMatchedRecords(data.matched_records || []);
       setConfidence(data.confidence || '');
       setPlaybook(data.playbook || '');
-      setIdReviewPrompt(data.playbook === 'trusted-id'
-        ? 'DoorWise needs a clear ID image before it can finish this trusted-organization decision.'
-        : '');
+      setIdReviewPrompt(
+        data.playbook === 'trusted-id'
+          ? 'DoorWise needs a clear ID image to complete this trusted-organization decision.'
+          : ''
+      );
       appendTranscript({ role: 'agent', text: data.recommended_action || data.reasoning });
-      saveIncident(claim, data);
+
+      // Save incident
+      const incident = {
+        timestamp: new Date().toISOString(),
+        claim,
+        decision: data.decision,
+        playbook: data.playbook,
+        reasoning: data.reasoning,
+      };
+      setIncidentLog((prev) => {
+        const next = [incident, ...prev].slice(0, 50);
+        localStorage.setItem(STORAGE_KEYS.incidents, JSON.stringify(next));
+        return next;
+      });
     } catch (error) {
-      console.error('Backend API error:', error);
-      setStatus('DO_NOT_OPEN');
-      setDatasetResults([]);
-      setDecisionReasoning('DoorWise could not reach the backend verification service.');
+      setStatus(DECISION_STATUS.DO_NOT_OPEN);
+      setDecisionReasoning('Could not reach the verification service.');
       setRecommendedScript('Please wait while I switch to manual review.');
-      setRecommendedAction('Do not open until you verify the visitor by phone or visual ID.');
+      setRecommendedAction('Do not open until you verify by phone or visual ID.');
       setEscalationContact('No building callback number is configured.');
-      setMatchedRecords([]);
       setConfidence('low');
       setPlaybook('manual-review');
-      setIdReviewPrompt('');
-      appendTranscript({ role: 'agent', text: 'DoorWise could not complete the verification request.' });
+      appendTranscript({ role: 'agent', text: 'Verification service unavailable. Defaulting to manual review.' });
     }
-  };
+  }, [address, buildingContext, appendTranscript]);
 
+  // Effects
   useEffect(() => {
-    if (!address || status !== 'LISTENING') {
+    const savedAddress = loadStoredJson(STORAGE_KEYS.address, null);
+    const savedValidation = loadStoredJson(STORAGE_KEYS.addressValidation, null);
+
+    if (!savedAddress) {
+      navigate('/setup');
       return;
     }
 
-    const finalizedMessages = transcript.filter((message) => message.text && message.finished !== false);
-    const visitorMessages = finalizedMessages
-      .filter((message) => message.role === 'visitor')
-      .map((message) => message.text);
-    const visitorClaimSummary = buildVisitorClaimSummary(visitorMessages);
-    const lastAgentMessage = [...finalizedMessages]
-      .reverse()
-      .find((message) => message.role === 'agent');
+    setAddress(savedAddress);
+    if (savedValidation) setAddressValidation(savedValidation);
+    setBuildingContext(loadStoredJson(STORAGE_KEYS.buildingContext, EMPTY_BUILDING_CONTEXT));
+    setIncidentLog(loadStoredJson(STORAGE_KEYS.incidents, []));
 
-    const inferredClaim = inferClaimFromVisitorTranscript(visitorMessages);
-    const trustedOrganizationCandidate = findTrustedOrganizationCandidate(
-      visitorClaimSummary,
-      buildingContext.trusted_id_organizations,
-    );
-    const lastAgentAskedForId = Boolean(lastAgentMessage && agentRequestedIdReview(lastAgentMessage.text));
-    const voiceCompletionFingerprint = visitorClaimSummary
-      ? `voice:${normalizeConversationText(visitorClaimSummary)}`
-      : '';
-    const waitingForTrustedId = Boolean(
-      trustedOrganizationCandidate
-      && visitorClaimSummary
-      && (lastAgentAskedForId || playbook === 'trusted-id'),
-    );
-    const shouldVerifyVoiceClaim = Boolean(
-      lastAgentMessage
-      && agentRequestedVerification(lastAgentMessage.text)
-      && voiceCompletionFingerprint
-      && lastAutoClaimSignatureRef.current !== voiceCompletionFingerprint,
-    );
-    const autoFingerprint = inferredClaim?.fingerprint;
-
-    if (waitingForTrustedId) {
-      setClaimInput(visitorClaimSummary);
-      setCurrentClaim(visitorClaimSummary);
-      setPlaybook('trusted-id');
-      setIdReviewPrompt(`Trusted organization detected: ${trustedOrganizationCandidate}. Capture or upload the ID to continue.`);
-    } else if (idReviewPrompt) {
-      setIdReviewPrompt('');
-    }
-
-    if (!shouldVerifyVoiceClaim && !inferredClaim && !waitingForTrustedId) {
-      return;
-    }
-
-    if (waitingForTrustedId && shouldVerifyVoiceClaim) {
-      if (autoVerifyTimeoutRef.current) {
-        window.clearTimeout(autoVerifyTimeoutRef.current);
+    return () => {
+      if (autoVerifyTimeoutRef.current) clearTimeout(autoVerifyTimeoutRef.current);
+      disconnect();
+      if (cameraStreamRef.current) {
+        cameraStreamRef.current.getTracks().forEach((t) => t.stop());
       }
+    };
+  }, [disconnect, navigate]);
 
-      autoVerifyTimeoutRef.current = window.setTimeout(() => {
-        lastAutoClaimSignatureRef.current = voiceCompletionFingerprint;
-        void triggerVerification(visitorClaimSummary);
-      }, 900);
+  // Camera setup
+  useEffect(() => {
+    let mounted = true;
 
-      return () => {
-        if (autoVerifyTimeoutRef.current) {
-          window.clearTimeout(autoVerifyTimeoutRef.current);
+    const startCamera = async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: 'environment' },
+          audio: false,
+        });
+
+        if (!mounted) {
+          stream.getTracks().forEach((t) => t.stop());
+          return;
         }
-      };
-    }
 
-    if (!shouldVerifyVoiceClaim && autoFingerprint && lastAutoClaimSignatureRef.current === autoFingerprint) {
+        cameraStreamRef.current = stream;
+        if (videoRef.current) videoRef.current.srcObject = stream;
+        setCameraReady(true);
+        setCameraError('');
+      } catch {
+        setCameraReady(false);
+        setCameraError('Camera unavailable. You can still verify visitors manually.');
+      }
+    };
+
+    startCamera();
+    return () => { mounted = false; };
+  }, []);
+
+  // Sync camera stream
+  useEffect(() => {
+    if (!cameraStreamRef.current || !videoRef.current) return;
+    if (videoRef.current.srcObject !== cameraStreamRef.current) {
+      videoRef.current.srcObject = cameraStreamRef.current;
+    }
+    videoRef.current.play().catch(() => {
+      setCameraError('Camera blocked by browser. Tap to resume.');
+    });
+  }, [address, cameraReady]);
+
+  // Voice error handling
+  useEffect(() => {
+    if (lastError) {
+      appendTranscript({ role: 'agent', text: `Voice issue: ${lastError}` });
+    }
+  }, [lastError, appendTranscript]);
+
+  // Session lock handling
+  useEffect(() => {
+    if (!sessionLocked) {
+      terminalNoticeRef.current = false;
       return;
     }
 
     if (autoVerifyTimeoutRef.current) {
-      window.clearTimeout(autoVerifyTimeoutRef.current);
+      clearTimeout(autoVerifyTimeoutRef.current);
+      autoVerifyTimeoutRef.current = null;
     }
 
-    autoVerifyTimeoutRef.current = window.setTimeout(() => {
-      if (shouldVerifyVoiceClaim) {
-        lastAutoClaimSignatureRef.current = voiceCompletionFingerprint;
-        setClaimInput(visitorClaimSummary);
-        void triggerVerification(visitorClaimSummary);
-        return;
-      }
+    if (isConnected && !terminalNoticeRef.current) {
+      appendTranscript({
+        role: 'agent',
+        text: 'Final decision reached. Reset for the next visitor.',
+      });
+      terminalNoticeRef.current = true;
+      disconnect();
+    }
+  }, [sessionLocked, isConnected, disconnect, appendTranscript]);
 
-      if (inferredClaim) {
-        lastAutoClaimSignatureRef.current = inferredClaim.fingerprint;
+  // Notifications
+  useEffect(() => {
+    if (!currentClaim || !terminalDecisions.includes(status)) return;
+    if (typeof Notification === 'undefined' || notificationPermission !== 'granted') return;
+
+    const notification = new Notification(`DoorWise ${DECISION_LABELS[status]}`, {
+      body: `${currentClaim} at ${address?.label || 'your door'}`,
+    });
+
+    return () => notification.close();
+  }, [address?.label, currentClaim, notificationPermission, status]);
+
+  // Auto-scroll transcript
+  useEffect(() => {
+    transcriptEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [transcript]);
+
+  // Auto-verification logic
+  useEffect(() => {
+    if (!address || status !== DECISION_STATUS.LISTENING) return;
+
+    const finalized = transcript.filter((m) => m.text && m.finished !== false);
+    const visitorMessages = finalized.filter((m) => m.role === 'visitor').map((m) => m.text);
+    const visitorSummary = buildVisitorClaimSummary(visitorMessages);
+    const lastAgent = [...finalized].reverse().find((m) => m.role === 'agent');
+
+    const inferredClaim = inferClaimFromVisitorTranscript(visitorMessages);
+    const trustedOrg = findTrustedOrganizationCandidate(
+      visitorSummary,
+      buildingContext.trusted_id_organizations
+    );
+
+    const lastAgentAskedId = Boolean(lastAgent && agentRequestedIdReview(lastAgent.text));
+    const voiceFingerprint = visitorSummary ? `voice:${normalizeConversationText(visitorSummary)}` : '';
+
+    const waitingForTrustedId = Boolean(
+      trustedOrg && visitorSummary && (lastAgentAskedId || playbook === 'trusted-id')
+    );
+
+    const shouldVerifyVoice = Boolean(
+      lastAgent &&
+      agentRequestedVerification(lastAgent.text) &&
+      voiceFingerprint &&
+      lastAutoClaimRef.current !== voiceFingerprint
+    );
+
+    if (waitingForTrustedId) {
+      setClaimInput(visitorSummary);
+      setCurrentClaim(visitorSummary);
+      setPlaybook('trusted-id');
+      setIdReviewPrompt(`Trusted organization detected: ${trustedOrg}. Capture the ID to continue.`);
+    } else if (idReviewPrompt) {
+      setIdReviewPrompt('');
+    }
+
+    if (!shouldVerifyVoice && !inferredClaim && !waitingForTrustedId) return;
+
+    if (autoVerifyTimeoutRef.current) clearTimeout(autoVerifyTimeoutRef.current);
+
+    autoVerifyTimeoutRef.current = setTimeout(() => {
+      if (shouldVerifyVoice || (waitingForTrustedId && shouldVerifyVoice)) {
+        lastAutoClaimRef.current = voiceFingerprint;
+        setClaimInput(visitorSummary);
+        triggerVerification(visitorSummary);
+      } else if (inferredClaim && lastAutoClaimRef.current !== inferredClaim.fingerprint) {
+        lastAutoClaimRef.current = inferredClaim.fingerprint;
         setClaimInput(inferredClaim.claim);
-        void triggerVerification(inferredClaim.claim);
+        triggerVerification(inferredClaim.claim);
       }
     }, 900);
 
     return () => {
-      if (autoVerifyTimeoutRef.current) {
-        window.clearTimeout(autoVerifyTimeoutRef.current);
-      }
+      if (autoVerifyTimeoutRef.current) clearTimeout(autoVerifyTimeoutRef.current);
     };
-  }, [address, buildingContext.trusted_id_organizations, idReviewPrompt, playbook, status, transcript]);
+  }, [address, buildingContext.trusted_id_organizations, idReviewPrompt, playbook, status, transcript, triggerVerification]);
 
-  const handleClaimSubmit = async (event) => {
-    event.preventDefault();
-    if (sessionLocked) {
-      return;
-    }
+  // Handlers
+  const handleClaimSubmit = async (e) => {
+    e.preventDefault();
+    if (sessionLocked) return;
+
     const claim = claimInput.trim();
-    if (!claim) {
-      return;
-    }
+    if (!claim) return;
 
     const visitorMessages = [
-      ...transcript
-        .filter((message) => message.role === 'visitor' && message.text && message.finished !== false)
-        .map((message) => message.text),
+      ...transcript.filter((m) => m.role === 'visitor' && m.text && m.finished !== false).map((m) => m.text),
       claim,
     ];
-    const inferredClaim = inferClaimFromVisitorTranscript(visitorMessages);
+    const inferred = inferClaimFromVisitorTranscript(visitorMessages);
 
     appendTranscript({ role: 'visitor', text: claim });
-    lastAutoClaimSignatureRef.current = inferredClaim?.fingerprint || `manual:${normalizeConversationText(claim)}`;
+    lastAutoClaimRef.current = inferred?.fingerprint || `manual:${normalizeConversationText(claim)}`;
     sendText(claim);
     setClaimInput('');
     await triggerVerification(claim);
   };
 
-  const requestBrowserAlerts = async () => {
+  const requestNotifications = async () => {
     if (typeof Notification === 'undefined') {
       setNotificationPermission('unsupported');
       return;
     }
-
     const permission = await Notification.requestPermission();
     setNotificationPermission(permission);
   };
 
-  const resumeCameraPlayback = () => {
-    if (!videoRef.current) {
-      return;
-    }
-
-    videoRef.current.play().then(() => {
-      setCameraError('');
-    }).catch(() => {
-      setCameraError('Camera playback is still blocked by the browser.');
+  const resumeCamera = () => {
+    videoRef.current?.play().then(() => setCameraError('')).catch(() => {
+      setCameraError('Camera playback still blocked.');
     });
   };
 
-  const readFileAsDataUrl = (file) => new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result);
-    reader.onerror = () => reject(new Error('DoorWise could not read that image.'));
-    reader.readAsDataURL(file);
-  });
-
   const getClaimContext = () => {
-    const typedClaim = claimInput.trim();
-    if (typedClaim) {
-      return typedClaim;
-    }
-
-    if (currentClaim) {
-      return currentClaim;
-    }
-
-    const visitorMessages = transcript
-      .filter((message) => message.role === 'visitor' && message.text && message.finished !== false)
-      .map((message) => message.text);
-
-    return buildVisitorClaimSummary(visitorMessages);
+    const typed = claimInput.trim();
+    if (typed) return typed;
+    if (currentClaim) return currentClaim;
+    return buildVisitorClaimSummary(
+      transcript.filter((m) => m.role === 'visitor' && m.text && m.finished !== false).map((m) => m.text)
+    );
   };
 
-  const parseDataUrl = (dataUrl) => {
-    const matches = String(dataUrl).match(/^data:(.+);base64,(.+)$/);
-    if (!matches) {
-      throw new Error('DoorWise could not parse that image.');
-    }
-
-    return {
-      mimeType: matches[1],
-      imageBase64: matches[2],
-    };
-  };
-
+  // ID Review handlers
   const runIdReview = async ({ dataUrl, source }) => {
     const claim = getClaimContext();
     if (!claim) {
-      setIdReviewError('Capture or enter a visitor claim before reviewing an ID.');
+      setIdReviewError('Capture a visitor claim before reviewing an ID.');
       return;
     }
 
     try {
       setIdReviewState('reviewing');
       setIdReviewError('');
-      const { mimeType, imageBase64 } = parseDataUrl(dataUrl);
 
-      const response = await fetch('/api/review-id', {
+      const matches = dataUrl.match(/^data:(.+);base64,(.+)$/);
+      if (!matches) throw new Error('Invalid image data.');
+
+      const response = await fetch(API_ENDPOINTS.REVIEW_ID, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           address,
           visitor_claim: claim,
           building_context: buildingContext,
-          mime_type: mimeType,
-          image_base64: imageBase64,
+          mime_type: matches[1],
+          image_base64: matches[2],
           source,
         }),
       });
 
       if (!response.ok) {
-        const errorPayload = await response.json().catch(() => ({}));
-        throw new Error(errorPayload.detail || 'DoorWise could not review that ID image.');
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.detail || 'Could not review ID image.');
       }
 
       const data = await response.json();
       setIdReview(data);
-      applyIdPolicyDecision(data);
+
+      // Apply policy decision if present
+      if (data.policy_decision) {
+        setStatus(data.policy_decision);
+        setConfidence(data.policy_confidence || confidence || 'medium');
+        setRecommendedAction(data.policy_action || recommendedAction);
+        setRecommendedScript(data.policy_script || recommendedScript);
+        setPlaybook(data.policy_playbook || 'trusted-id');
+        setIdReviewPrompt('');
+
+        if (data.policy_decision === DECISION_STATUS.PROCEED_AFTER_ID_CHECK) {
+          appendTranscript({
+            role: 'agent',
+            text: `ID matches trusted organization ${data.trusted_organization_match}. Proceed after visual ID check.`,
+          });
+        }
+      }
     } catch (error) {
       setIdReview(null);
-      setIdReviewError(error.message || 'DoorWise could not review that ID image.');
+      setIdReviewError(error.message);
     } finally {
       setIdReviewState('idle');
     }
   };
 
-  const handleOpenIdUpload = () => {
-    idFileInputRef.current?.click();
-  };
-
-  const handleIdFileChange = async (event) => {
-    const file = event.target.files?.[0];
-    event.target.value = '';
-
-    if (!file) {
-      return;
-    }
-
-    if (!file.type.startsWith('image/')) {
-      setIdReviewError('Please choose an image file for ID review.');
-      return;
-    }
-
-    if (file.size > 6 * 1024 * 1024) {
-      setIdReviewError('Please choose an ID image smaller than 6 MB.');
-      return;
-    }
-
-    try {
-      const dataUrl = await readFileAsDataUrl(file);
-      await runIdReview({ dataUrl, source: 'upload' });
-    } catch (error) {
-      setIdReviewError(error.message || 'DoorWise could not read that image.');
-    }
-  };
-
-  const handleCaptureIdFrame = async () => {
+  const handleIdCapture = async () => {
     if (!videoRef.current || !cameraReady) {
-      setIdReviewError('Camera preview is not available yet.');
+      setIdReviewError('Camera not available.');
       return;
     }
 
     const canvas = document.createElement('canvas');
     canvas.width = videoRef.current.videoWidth || 1280;
     canvas.height = videoRef.current.videoHeight || 720;
-    const context = canvas.getContext('2d');
-
-    if (!context) {
-      setIdReviewError('DoorWise could not capture a frame from the camera.');
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      setIdReviewError('Could not capture frame.');
       return;
     }
 
-    context.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
+    ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
     const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
     await runIdReview({ dataUrl, source: 'camera_capture' });
   };
 
-  if (!address) {
-    return null;
-  }
+  const handleIdUpload = () => idFileInputRef.current?.click();
 
-  const VerdictIcon = verdictIcons[status] || ShieldAlert;
-  const hasWeakAddressSignal = addressValidation && !addressValidation.is_valid;
+  const handleIdFileChange = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      setIdReviewError('Please choose an image file.');
+      return;
+    }
+    if (file.size > 6 * 1024 * 1024) {
+      setIdReviewError('Image must be under 6 MB.');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => runIdReview({ dataUrl: reader.result, source: 'upload' });
+    reader.onerror = () => setIdReviewError('Could not read image file.');
+    reader.readAsDataURL(file);
+  };
+
+  if (!address) return null;
+
+  const hasWeakAddress = addressValidation && !addressValidation.is_valid;
   const hasCallbackContext = Boolean(
-    buildingContext.management_phone
-    || buildingContext.super_phone
-    || buildingContext.approved_vendors?.length,
+    buildingContext.management_phone ||
+    buildingContext.super_phone ||
+    buildingContext.approved_vendors?.length
   );
-  const claimContext = getClaimContext();
 
   return (
-    <div className="dashboard-container">
-      <div className="dashboard-header glass-panel">
-        <div className="logo cursor-pointer" onClick={() => navigate('/')}>
-          <ShieldCheck className="logo-icon" size={24} />
+    <div className="dashboard">
+      {/* Header */}
+      <header className="dashboard-header glass-panel">
+        <Link to="/" className="logo">
+          <ShieldCheck className="logo-icon" size={22} />
           <span className="logo-text">DoorWise</span>
+        </Link>
+
+        <div className="header-address">
+          <MapPin size={16} className="text-blue" />
+          <span>{address.label || `${address.houseNumber} ${address.street}, ${address.borough}`}</span>
         </div>
 
-        <div className="address-badge">
-          <MapPin size={16} className="text-blue-400" />
-          {address.label || `${address.houseNumber} ${address.street}, ${address.borough}`}
+        <div className="header-status">
+          <div className="status-dot" />
+          <span>{connectionState === 'connected' ? 'Voice Connected' : 'Ready'}</span>
         </div>
 
-        <div className="system-status">
-          <span className="pulse-dot green"></span>
-          {connectionState === 'connected' ? 'Voice Linked' : 'Voice-First Verification'}
-        </div>
-      </div>
+        <Link to="/setup" className="header-settings">
+          <Settings size={18} />
+        </Link>
+      </header>
 
-      {hasWeakAddressSignal ? (
-        <div className="dashboard-banner warning">
-          <AlertTriangle size={16} />
-          <span>No matching city record was found during setup, so this address is running in manual-review mode.</span>
-        </div>
-      ) : null}
+      {/* Alerts */}
+      {hasWeakAddress && (
+        <Alert variant="warning" icon={AlertTriangle} className="dashboard-alert">
+          No matching city record found. Running in manual-review mode.
+        </Alert>
+      )}
 
-      {!hasCallbackContext ? (
-        <div className="dashboard-banner">
-          <Database size={16} />
-          <span>Add management or super phone numbers in setup if you want callback-based decisions instead of public-data-only review.</span>
-        </div>
-      ) : null}
+      {!hasCallbackContext && (
+        <Alert variant="info" icon={Database} className="dashboard-alert">
+          Add management or super phone numbers in setup for callback-based decisions.
+        </Alert>
+      )}
 
-      {addressValidation?.datasets?.some((dataset) => dataset.status === 'unavailable') ? (
-        <div className="dashboard-banner">
-          <Database size={16} />
-          <span>Some NYC datasets are temporarily unavailable, so decisions may use fewer data sources.</span>
-        </div>
-      ) : null}
+      {/* Main Grid */}
+      <main className="dashboard-main">
+        {/* Left Column: Camera + Conversation */}
+        <div className="dashboard-left">
+          <Card className="camera-card">
+            <CameraPanel
+              ref={videoRef}
+              cameraReady={cameraReady}
+              cameraError={cameraError}
+              onResume={resumeCamera}
+            />
+          </Card>
 
-      <div className="dashboard-main">
-        <div className="panel camera-panel glass-panel">
-          <div className="panel-header">
-            <Video size={18} />
-            <span>Door Camera Preview</span>
-            {cameraReady ? <span className="badge-analyzing">Live</span> : null}
-          </div>
-          <div className="camera-feed" onClick={resumeCameraPlayback}>
-            {cameraReady ? <video ref={videoRef} autoPlay muted playsInline className="camera-video" /> : <div className="camera-bg"></div>}
-            <div className="vision-overlay">
-              <div className="camera-frame">
-                <span className="label">{cameraReady ? 'Live preview' : 'Camera offline'}</span>
+          <Card className="conversation-card">
+            <div className="panel-header">
+              <div className="header-left">
+                <Mic size={18} />
+                <span>Conversation</span>
               </div>
+              <ConnectionStatus
+                state={connectionState}
+                onConnect={connect}
+                onDisconnect={disconnect}
+                sessionLocked={sessionLocked}
+                onReset={resetSession}
+              />
             </div>
-            <div className="feed-timestamp">{new Date().toLocaleTimeString()} • Front Door</div>
-          </div>
-          <div className="panel-note">
-            {cameraError || 'Camera preview is for visual confirmation only. Gemini document review runs only when you capture or upload an ID image.'}
-          </div>
-        </div>
 
-        <div className="panel transcript-panel glass-panel">
-          <div className="panel-header split-header">
-            <div className="header-title">
-              <Mic size={18} />
-              <span>Conversation + Claim Intake</span>
+            <div className="transcript-area">
+              {transcript.map((msg, idx) => (
+                <TranscriptBubble
+                  key={`${msg.role}-${idx}`}
+                  message={msg}
+                  isPartial={msg.finished === false}
+                />
+              ))}
+              <div ref={transcriptEndRef} />
             </div>
-            <div className="header-actions">
-              {sessionLocked ? (
-                <button onClick={resetSession} className="status-button ghost">
-                  <RotateCcw size={14} />
-                  Next Visitor
-                </button>
-              ) : !isConnected ? (
-                <button onClick={connect} className="status-button success">
-                  Connect Voice
-                </button>
-              ) : (
-                <button onClick={disconnect} className="status-button ghost">
-                  Disconnect Voice
-                </button>
-              )}
-            </div>
-          </div>
 
-          <div className="transcript-area">
-            {transcript.map((message, index) => {
-              const isPartial = message.finished === false;
+            <VoiceVisualizer
+              isActive={isConnected}
+              isSpeaking={isSpeaking}
+              className="conversation-visualizer"
+            />
 
-              return (
-                <div
-                  key={`${message.role}-${index}`}
-                  className={`msg-bubble ${message.role}${isPartial ? ' partial' : ''}`}
-                >
-                  <div className="msg-sender">
-                    {message.role === 'agent' ? 'DoorWise' : 'Visitor'}
-                    {isPartial ? <span className="msg-status">Listening...</span> : null}
-                  </div>
-                  <div className="msg-text">{message.text}</div>
-                </div>
-              );
-            })}
-          </div>
-
-          <div className="audio-visualizer">
-            {[0, 1, 2, 3, 4].map((bar) => (
-              <div
-                key={bar}
-                className={`bar ${isConnected || isSpeaking ? 'active' : ''}`}
-                style={{ animationDelay: `${bar * 0.1}s` }}
-              ></div>
-            ))}
-          </div>
-
-          <form className="claim-form" onSubmit={handleClaimSubmit}>
-            <label htmlFor="claimInput">Visitor claim</label>
-            <div className="claim-input-row">
+            <form className="claim-form" onSubmit={handleClaimSubmit}>
               <input
-                id="claimInput"
+                type="text"
                 value={claimInput}
-                onChange={(event) => setClaimInput(event.target.value)}
-                placeholder="e.g. Management is here for an apartment inspection"
+                onChange={(e) => setClaimInput(e.target.value)}
+                placeholder="Type visitor claim or use voice..."
                 disabled={sessionLocked}
+                className="input"
               />
-              <button type="submit" className="btn-primary" disabled={sessionLocked}>
-                {sessionLocked ? 'Reset First' : 'Verify'} {!sessionLocked ? <Send size={16} /> : null}
-              </button>
-            </div>
-            <div className="claim-helper">
-              {sessionLocked
-                ? 'This session is complete. Reset for the next visitor before collecting a new claim.'
-                : 'Voice is the primary DoorWise experience. Text stays available when the mic is unavailable, the room is noisy, or the live connection drops.'}
-            </div>
-          </form>
+              <Button type="submit" disabled={sessionLocked || !claimInput.trim()}>
+                <Send size={16} />
+              </Button>
+            </form>
+          </Card>
         </div>
 
-        <div className="panel verdict-panel glass-panel">
-          <div className="panel-header">
-            <Activity size={18} />
-            <span>Decision + Next Action</span>
-          </div>
+        {/* Right Column: Decision + Actions */}
+        <div className="dashboard-right">
+          <Card className="decision-card-wrapper">
+            <DecisionCard
+              status={status}
+              claim={currentClaim}
+              playbook={playbook}
+              confidence={confidence}
+            />
 
-          <div className="verdict-content">
-            <div className={`verdict-card ${status.toLowerCase()}`}>
-              <div className={`verdict-icon ${status === 'VERIFYING' ? 'pulse' : ''}`}>
-                <VerdictIcon size={48} />
-              </div>
-              <h2>{decisionLabels[status] || status}</h2>
-              {currentClaim ? <p>Claim: {currentClaim}</p> : <p>Waiting for a supported building-access claim.</p>}
+            <div className="notification-control">
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={requestNotifications}
+              >
+                {notificationPermission === 'granted' ? (
+                  <><BellRing size={14} /> Alerts On</>
+                ) : (
+                  <><Bell size={14} /> Enable Alerts</>
+                )}
+              </Button>
             </div>
 
-            <div className="decision-meta">
-              <span className="meta-pill">{playbook || 'manual-review'}</span>
-              <span className="meta-pill">{confidence || 'pending'} confidence</span>
-            </div>
+            <ActionGrid
+              reasoning={decisionReasoning}
+              script={recommendedScript}
+              action={recommendedAction}
+              contact={escalationContact}
+            />
+          </Card>
 
-            <div className="alert-controls">
-              <button onClick={requestBrowserAlerts} className="btn-secondary">
-                {notificationPermission === 'granted' ? <BellRing size={16} /> : <Bell size={16} />}
-                {notificationPermission === 'granted' ? 'Browser Alerts Enabled' : 'Enable Browser Alerts'}
-              </button>
-            </div>
+          <Card className="id-review-wrapper">
+            <input
+              ref={idFileInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handleIdFileChange}
+              className="hidden"
+            />
+            <IdReviewCard
+              prompt={idReviewPrompt}
+              review={idReview}
+              state={idReviewState}
+              error={idReviewError}
+              claimContext={getClaimContext()}
+              cameraReady={cameraReady}
+              onCapture={handleIdCapture}
+              onUpload={handleIdUpload}
+            />
+          </Card>
 
-            <div className="id-review-card">
-              {idReviewPrompt ? (
-                <div className="dashboard-banner id-review-banner">
-                  <Camera size={16} />
-                  <span>{idReviewPrompt}</span>
-                </div>
-              ) : null}
+          <Card className="data-card">
+            <DataChecks
+              datasets={datasetResults}
+              records={matchedRecords}
+            />
+          </Card>
 
-              <div className="id-review-header">
-                <div>
-                  <strong>ID Review</strong>
-                  <p>Capture or upload a work badge or ID. Gemini extracts visible fields and compares them with the current claim.</p>
-                </div>
-                <span className="meta-pill">Supporting evidence only</span>
+          <Card className="incident-card">
+            <h4>Recent Incidents</h4>
+            {incidentLog.length > 0 ? (
+              <div className="incident-list">
+                {incidentLog.slice(0, 5).map((incident, idx) => (
+                  <IncidentItem key={`${incident.timestamp}-${idx}`} incident={incident} />
+                ))}
               </div>
-
-              <input
-                ref={idFileInputRef}
-                type="file"
-                accept="image/*"
-                onChange={handleIdFileChange}
-                className="hidden-input"
-              />
-
-              <div className="id-review-actions">
-                <button
-                  type="button"
-                  className="btn-secondary id-review-button"
-                  onClick={handleCaptureIdFrame}
-                  disabled={!cameraReady || !claimContext || idReviewState === 'reviewing'}
-                >
-                  <Camera size={16} />
-                  Capture Frame
-                </button>
-                <button
-                  type="button"
-                  className="btn-secondary id-review-button"
-                  onClick={handleOpenIdUpload}
-                  disabled={!claimContext || idReviewState === 'reviewing'}
-                >
-                  <Upload size={16} />
-                  Upload ID Image
-                </button>
-              </div>
-
-              <div className="id-review-helper">
-                {claimContext
-                  ? `Current claim for ID review: ${claimContext}`
-                  : 'Capture or enter a visitor claim first. ID review compares the image against that claim.'}
-              </div>
-
-              {idReviewState === 'reviewing' ? (
-                <div className="id-review-status">Reviewing the document with Gemini...</div>
-              ) : null}
-
-              {idReviewError ? <div className="id-review-error">{idReviewError}</div> : null}
-
-              {idReview ? (
-                <div className="id-review-result">
-                  <div className={`id-review-summary ${idReview.claim_alignment}`}>
-                    <strong>{idAlignmentLabels[idReview.claim_alignment] || 'ID review complete'}</strong>
-                    <span>{idReview.reasoning}</span>
-                  </div>
-
-                  {idReview.trusted_organization_match ? (
-                    <div className="id-review-status">
-                      Trusted organization policy match: {idReview.trusted_organization_match}
-                    </div>
-                  ) : null}
-
-                  <div className="id-review-grid">
-                    <div className="id-review-field">
-                      <span>Document type</span>
-                      <strong>{idReview.document_type || 'unknown'}</strong>
-                    </div>
-                    <div className="id-review-field">
-                      <span>Organization</span>
-                      <strong>{idReview.organization_name || 'Not clearly readable'}</strong>
-                    </div>
-                    <div className="id-review-field">
-                      <span>Name</span>
-                      <strong>{idReview.person_name || 'Not clearly readable'}</strong>
-                    </div>
-                    <div className="id-review-field">
-                      <span>Badge / employee ID</span>
-                      <strong>{idReview.badge_or_employee_id || 'Not clearly readable'}</strong>
-                    </div>
-                    <div className="id-review-field">
-                      <span>Image quality</span>
-                      <strong>{idReview.evidence_quality || 'unknown'}</strong>
-                    </div>
-                    <div className="id-review-field">
-                      <span>Model</span>
-                      <strong>{idReview.model}</strong>
-                    </div>
-                  </div>
-
-                  <div className="id-review-recommendation">
-                    <strong>Document review action</strong>
-                    <p>{idReview.recommended_action}</p>
-                  </div>
-
-                  {idReview.policy_action ? (
-                    <div className="id-review-recommendation">
-                      <strong>Building policy outcome</strong>
-                      <p>{idReview.policy_action}</p>
-                    </div>
-                  ) : null}
-                </div>
-              ) : null}
-            </div>
-
-            <div className="action-grid">
-              <div className="action-card">
-                <strong>Why</strong>
-                <p>{decisionReasoning || 'Submit a claim to see the reasoning.'}</p>
-              </div>
-
-              <div className="action-card">
-                <strong>What To Say</strong>
-                <p>{recommendedScript || 'DoorWise will suggest a short script after verification.'}</p>
-              </div>
-
-              <div className="action-card">
-                <strong>What To Do</strong>
-                <p>{recommendedAction || 'DoorWise will tell you the next action after verification.'}</p>
-              </div>
-
-              <div className="action-card">
-                <strong>Who To Call</strong>
-                <p>{escalationContact || 'No building callback number is configured yet.'}</p>
-              </div>
-            </div>
-
-            <div className="nyc-data-section">
-              <h3>Supporting Records</h3>
-              {matchedRecords.length ? (
-                <div className="detail-stack">
-                  {matchedRecords.map((record, index) => (
-                    <div className="detail-card" key={`${record.dataset}-${index}`}>
-                      <strong>{record.dataset}</strong>
-                      <div className="detail-inline">
-                        {Object.entries(record.fields || {}).map(([key, value]) => (
-                          <span key={key}>{key}: {String(value)}</span>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="empty-state">No matching records were attached to the latest decision.</div>
-              )}
-            </div>
-
-            <div className="nyc-data-section">
-              <h3>NYC Open Data Checks</h3>
-              {datasetResults.length ? (
-                datasetResults.map((dataset) => (
-                  <div className="data-row" key={dataset.key}>
-                    <div className="data-label">{dataset.label}</div>
-                    <div className={`data-status ${dataset.status === 'ok' ? 'done' : 'alert'}`}>
-                      {dataset.status === 'ok' ? <CheckCircle2 size={16} /> : <AlertTriangle size={16} />}
-                      {dataset.status === 'ok' ? `${dataset.count} record(s)` : dataset.error || 'Unavailable'}
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <div className="empty-state">Submit a claim to populate the city data checks.</div>
-              )}
-            </div>
-
-            <div className="nyc-data-section">
-              <h3>Recent Incidents</h3>
-              {incidentLog.length ? (
-                <div className="detail-stack">
-                  {incidentLog.map((item, index) => (
-                    <div className="detail-card" key={`${item.timestamp}-${index}`}>
-                      <strong>{decisionLabels[item.decision] || item.decision}</strong>
-                      <p>{item.claim}</p>
-                      <span>{new Date(item.timestamp).toLocaleString()}</span>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="empty-state">The incident log will start after the first verification run.</div>
-              )}
-            </div>
-          </div>
+            ) : (
+              <p className="empty-text">No recent incidents.</p>
+            )}
+          </Card>
         </div>
-      </div>
+      </main>
     </div>
   );
 };

@@ -1,20 +1,31 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { AlertTriangle, ArrowRight, Building, MapPin, ShieldCheck } from 'lucide-react';
+import { useNavigate, Link } from 'react-router-dom';
+import {
+  AlertTriangle,
+  ArrowLeft,
+  ArrowRight,
+  Building,
+  CheckCircle2,
+  ChevronRight,
+  Loader2,
+  MapPin,
+  Phone,
+  ShieldCheck,
+  Sparkles,
+  Users,
+  Zap,
+} from 'lucide-react';
+import { Button, Card, Badge, Input, Select, Textarea, ProgressSteps, Alert, Pill } from '../components/common';
+import { DEMO_BUILDING, NYC_BOROUGHS, STORAGE_KEYS } from '../lib/constants';
 import './Setup.css';
+
+const STEPS = ['Address', 'Building Context', 'Review'];
 
 const initialAddress = {
   houseNumber: '',
   street: '',
   borough: '',
   apartment: '',
-};
-
-const demoAddress = {
-  houseNumber: '370',
-  street: 'Jay Street',
-  borough: 'BROOKLYN',
-  apartment: '317',
 };
 
 const initialBuildingContext = {
@@ -25,49 +36,44 @@ const initialBuildingContext = {
   trusted_id_organizations_input: '',
 };
 
-const demoBuildingContext = {
-  building_name: '370 Jay Street Apartments',
-  management_phone: '212-555-0100',
-  super_phone: '646-555-0111',
-  approved_vendors_input: 'Ace Plumbing, BrightWire Electric',
-  trusted_id_organizations_input: 'New York University, NYU',
-};
-
-const storageKeys = {
-  address: 'doorwise_address',
-  addressValidation: 'doorwise_address_validation',
-  buildingContext: 'doorwise_building_context',
-};
-
-const AddressSetup = () => {
+const Setup = () => {
   const navigate = useNavigate();
+  const [currentStep, setCurrentStep] = useState(0);
   const [address, setAddress] = useState(initialAddress);
   const [buildingContext, setBuildingContext] = useState(initialBuildingContext);
   const [isVerifying, setIsVerifying] = useState(false);
   const [error, setError] = useState('');
 
-  const handleChange = (event) => {
-    setAddress({
-      ...address,
-      [event.target.name]: event.target.value,
-    });
-  };
-
-  const handleBuildingContextChange = (event) => {
-    setBuildingContext({
-      ...buildingContext,
-      [event.target.name]: event.target.value,
-    });
-  };
-
-  const handleUseDemoBuilding = () => {
-    setAddress(demoAddress);
-    setBuildingContext(demoBuildingContext);
+  const handleAddressChange = (e) => {
+    setAddress(prev => ({ ...prev, [e.target.name]: e.target.value }));
     setError('');
   };
 
-  const handleSubmit = async (event) => {
-    event.preventDefault();
+  const handleContextChange = (e) => {
+    setBuildingContext(prev => ({ ...prev, [e.target.name]: e.target.value }));
+  };
+
+  const handleUseDemoBuilding = () => {
+    setAddress(DEMO_BUILDING.address);
+    setBuildingContext(DEMO_BUILDING.context);
+    setError('');
+  };
+
+  const canProceedStep1 = address.houseNumber && address.street && address.borough;
+  
+  const handleNext = () => {
+    if (currentStep < STEPS.length - 1) {
+      setCurrentStep(prev => prev + 1);
+    }
+  };
+
+  const handleBack = () => {
+    if (currentStep > 0) {
+      setCurrentStep(prev => prev - 1);
+    }
+  };
+
+  const handleSubmit = async () => {
     setError('');
     setIsVerifying(true);
 
@@ -79,224 +85,318 @@ const AddressSetup = () => {
       });
 
       if (!response.ok) {
-        throw new Error('Could not check this address against the available city records.');
+        throw new Error('Could not validate this address against NYC records. Please check and try again.');
       }
 
       const data = await response.json();
+      
       const normalizedBuildingContext = {
         building_name: buildingContext.building_name.trim(),
         management_phone: buildingContext.management_phone.trim(),
         super_phone: buildingContext.super_phone.trim(),
         approved_vendors: buildingContext.approved_vendors_input
           .split(/[,\n;]/)
-          .map((value) => value.trim())
+          .map(v => v.trim())
           .filter(Boolean),
         trusted_id_organizations: buildingContext.trusted_id_organizations_input
           .split(/[,\n;]/)
-          .map((value) => value.trim())
+          .map(v => v.trim())
           .filter(Boolean),
       };
 
-      localStorage.setItem(storageKeys.address, JSON.stringify(data.address));
-      localStorage.setItem(storageKeys.addressValidation, JSON.stringify(data));
-      localStorage.setItem(storageKeys.buildingContext, JSON.stringify(normalizedBuildingContext));
+      localStorage.setItem(STORAGE_KEYS.address, JSON.stringify(data.address));
+      localStorage.setItem(STORAGE_KEYS.addressValidation, JSON.stringify(data));
+      localStorage.setItem(STORAGE_KEYS.buildingContext, JSON.stringify(normalizedBuildingContext));
+      
       navigate('/dashboard');
-    } catch (validationError) {
-      setError(validationError.message || 'City record check failed.');
+    } catch (err) {
+      setError(err.message || 'Validation failed. Please try again.');
     } finally {
       setIsVerifying(false);
     }
   };
 
-  return (
-    <div className="setup-container">
-      <div className="setup-nav">
-        <div className="logo" onClick={() => navigate('/')} style={{ cursor: 'pointer' }}>
-          <ShieldCheck className="logo-icon" size={24} />
-          <span className="logo-text" style={{ fontSize: '1.25rem' }}>DoorWise</span>
-        </div>
-      </div>
-
-      <div className="setup-content">
-        <div className="setup-card glass-panel">
-          <div className="setup-header">
-            <div className="icon-wrapper">
-              <MapPin size={32} color="var(--accent-blue)" />
+  const renderStepContent = () => {
+    switch (currentStep) {
+      case 0:
+        return (
+          <div className="step-content animate-fade-in">
+            <div className="step-header">
+              <div className="step-icon blue">
+                <MapPin size={28} />
+              </div>
+              <h2>Enter Your Address</h2>
+              <p>
+                DoorWise uses your NYC address to anchor verification checks against 
+                public city records.
+              </p>
             </div>
-            <h2>Set Up Your Door</h2>
-            <p>
-              Enter your NYC address to anchor verification checks. DoorWise will look for matching public city
-              records before opening the live workflow.
-            </p>
-            <div className="setup-header-actions">
-              <button type="button" className="btn-secondary demo-fill-button" onClick={handleUseDemoBuilding}>
-                Use Demo Building
-              </button>
-            </div>
-          </div>
 
-          <form onSubmit={handleSubmit} className="setup-form">
-            <div className="form-row">
-              <div className="form-group flex-1">
-                <label htmlFor="houseNumber">House / Building Number</label>
-                <input
-                  id="houseNumber"
-                  type="text"
+            <div className="form-grid">
+              <div className="form-row">
+                <Input
+                  label="House / Building Number"
                   name="houseNumber"
                   value={address.houseNumber}
-                  onChange={handleChange}
-                  placeholder="e.g. 1520"
+                  onChange={handleAddressChange}
+                  placeholder="e.g. 370"
                   required
                 />
-              </div>
-              <div className="form-group flex-2">
-                <label htmlFor="street">Street Name</label>
-                <input
-                  id="street"
-                  type="text"
+                <Input
+                  label="Street Name"
                   name="street"
                   value={address.street}
-                  onChange={handleChange}
-                  placeholder="e.g. GRAND CONCOURSE"
+                  onChange={handleAddressChange}
+                  placeholder="e.g. Jay Street"
                   required
+                  className="flex-2"
                 />
               </div>
-            </div>
 
-            <div className="form-row">
-              <div className="form-group flex-2">
-                <label htmlFor="borough">Borough</label>
-                <div className="select-wrapper">
-                  <select id="borough" name="borough" value={address.borough} onChange={handleChange} required>
-                    <option value="" disabled>Select a borough</option>
-                    <option value="MANHATTAN">Manhattan</option>
-                    <option value="BROOKLYN">Brooklyn</option>
-                    <option value="QUEENS">Queens</option>
-                    <option value="BRONX">The Bronx</option>
-                    <option value="STATEN ISLAND">Staten Island</option>
-                  </select>
-                </div>
-              </div>
-              <div className="form-group flex-1">
-                <label htmlFor="apartment">Apt / Unit</label>
-                <input
-                  id="apartment"
-                  type="text"
+              <div className="form-row">
+                <Select
+                  label="Borough"
+                  name="borough"
+                  value={address.borough}
+                  onChange={handleAddressChange}
+                  required
+                  className="flex-2"
+                >
+                  <option value="" disabled>Select a borough</option>
+                  {NYC_BOROUGHS.map(b => (
+                    <option key={b.value} value={b.value}>{b.label}</option>
+                  ))}
+                </Select>
+                <Input
+                  label="Apt / Unit (Optional)"
                   name="apartment"
                   value={address.apartment}
-                  onChange={handleChange}
+                  onChange={handleAddressChange}
                   placeholder="e.g. 4B"
                 />
               </div>
             </div>
 
-            <div className="data-disclaimer">
-              <Building size={16} />
-              <span>
-                DoorWise checks whether this address has matching city records from HPD, HPD registration data, and
-                DOB NOW permits. Add optional building contacts below if you want callback-based decisions instead of
-                public-data-only review.
-              </span>
+            <div className="step-actions">
+              <Button 
+                variant="secondary" 
+                onClick={handleUseDemoBuilding}
+              >
+                <Sparkles size={16} />
+                Use Demo Building
+              </Button>
+              <Button 
+                onClick={handleNext} 
+                disabled={!canProceedStep1}
+              >
+                Continue <ArrowRight size={18} />
+              </Button>
+            </div>
+          </div>
+        );
+
+      case 1:
+        return (
+          <div className="step-content animate-fade-in">
+            <div className="step-header">
+              <div className="step-icon amber">
+                <Building size={28} />
+              </div>
+              <h2>Building Context</h2>
+              <p>
+                Add optional details to enable callback-based decisions and 
+                trusted organization verification.
+              </p>
             </div>
 
-            <div className="building-context-panel">
-              <div className="building-context-header">
-                <Building size={16} />
-                <span>Building Context For Better Decisions</span>
-              </div>
+            <Alert variant="info" icon={Zap}>
+              These fields are optional but enable more accurate verification decisions. 
+              Skip if you want public-data-only review.
+            </Alert>
 
-              <div className="form-group">
-                <label htmlFor="building_name">Building Name (Optional)</label>
-                <input
-                  id="building_name"
-                  type="text"
-                  name="building_name"
-                  value={buildingContext.building_name}
-                  onChange={handleBuildingContextChange}
-                  placeholder="e.g. 370 Jay Street Apartments"
-                />
-              </div>
+            <div className="form-grid">
+              <Input
+                label="Building Name"
+                name="building_name"
+                value={buildingContext.building_name}
+                onChange={handleContextChange}
+                placeholder="e.g. 370 Jay Street Apartments"
+                hint="Helps identify your building in the dashboard"
+              />
 
               <div className="form-row">
-                <div className="form-group flex-1">
-                  <label htmlFor="management_phone">Management Phone (Optional)</label>
-                  <input
-                    id="management_phone"
-                    type="text"
-                    name="management_phone"
-                    value={buildingContext.management_phone}
-                    onChange={handleBuildingContextChange}
-                    placeholder="e.g. 212-555-0100"
-                  />
-                </div>
-
-                <div className="form-group flex-1">
-                  <label htmlFor="super_phone">Super Phone (Optional)</label>
-                  <input
-                    id="super_phone"
-                    type="text"
-                    name="super_phone"
-                    value={buildingContext.super_phone}
-                    onChange={handleBuildingContextChange}
-                    placeholder="e.g. 646-555-0111"
-                  />
-                </div>
-              </div>
-
-              <div className="form-group">
-                <label htmlFor="approved_vendors_input">Approved Vendors (Optional)</label>
-                <textarea
-                  id="approved_vendors_input"
-                  name="approved_vendors_input"
-                  value={buildingContext.approved_vendors_input}
-                  onChange={handleBuildingContextChange}
-                  placeholder="Comma-separated vendor names, like Ace Plumbing, BrightWire Electric"
-                  rows="3"
+                <Input
+                  label="Management Phone"
+                  name="management_phone"
+                  value={buildingContext.management_phone}
+                  onChange={handleContextChange}
+                  placeholder="e.g. 212-555-0100"
+                />
+                <Input
+                  label="Super Phone"
+                  name="super_phone"
+                  value={buildingContext.super_phone}
+                  onChange={handleContextChange}
+                  placeholder="e.g. 646-555-0111"
                 />
               </div>
 
-              <div className="form-group">
-                <label htmlFor="trusted_id_organizations_input">Trusted ID Organizations (Optional)</label>
-                <textarea
-                  id="trusted_id_organizations_input"
-                  name="trusted_id_organizations_input"
-                  value={buildingContext.trusted_id_organizations_input}
-                  onChange={handleBuildingContextChange}
-                  placeholder="Comma-separated organizations allowed by ID, like New York University, NYU"
-                  rows="2"
-                />
-              </div>
+              <Textarea
+                label="Approved Vendors"
+                name="approved_vendors_input"
+                value={buildingContext.approved_vendors_input}
+                onChange={handleContextChange}
+                placeholder="Comma-separated vendor names&#10;e.g. Ace Plumbing, BrightWire Electric"
+                hint="Vendors that regularly service your building"
+                rows={3}
+              />
 
-              <div className="building-context-note">
-                DoorWise can use these contacts, vendor names, and trusted ID organizations to suggest who to call,
-                when a contractor looks expected, and when a verified badge can raise confidence.
-              </div>
+              <Textarea
+                label="Trusted ID Organizations"
+                name="trusted_id_organizations_input"
+                value={buildingContext.trusted_id_organizations_input}
+                onChange={handleContextChange}
+                placeholder="Comma-separated organization names&#10;e.g. New York University, NYU"
+                hint="Organizations whose IDs can be verified for access"
+                rows={3}
+              />
             </div>
 
-            {error ? (
-              <div className="form-error">
-                <AlertTriangle size={16} />
-                <span>{error}</span>
-              </div>
-            ) : null}
+            <div className="step-actions">
+              <Button variant="ghost" onClick={handleBack}>
+                <ArrowLeft size={18} /> Back
+              </Button>
+              <Button onClick={handleNext}>
+                Continue <ArrowRight size={18} />
+              </Button>
+            </div>
+          </div>
+        );
 
-            <button type="submit" className="btn-primary w-full" disabled={isVerifying}>
-              {isVerifying ? (
-                <span className="loading-state">
-                  <div className="spinner"></div>
-                  Checking City Records...
-                </span>
-              ) : (
-                <>
-                  Activate DoorWise <ArrowRight size={20} />
-                </>
-              )}
-            </button>
-          </form>
+      case 2:
+        return (
+          <div className="step-content animate-fade-in">
+            <div className="step-header">
+              <div className="step-icon green">
+                <CheckCircle2 size={28} />
+              </div>
+              <h2>Review & Activate</h2>
+              <p>
+                Review your configuration before activating DoorWise for this building.
+              </p>
+            </div>
+
+            <div className="review-grid">
+              <Card className="review-card">
+                <div className="review-card-header">
+                  <MapPin size={18} className="text-blue" />
+                  <span>Address</span>
+                </div>
+                <div className="review-card-body">
+                  <strong>
+                    {address.houseNumber} {address.street}
+                    {address.apartment && `, Apt ${address.apartment}`}
+                  </strong>
+                  <span>{address.borough}</span>
+                </div>
+              </Card>
+
+              <Card className="review-card">
+                <div className="review-card-header">
+                  <Building size={18} className="text-amber" />
+                  <span>Building</span>
+                </div>
+                <div className="review-card-body">
+                  <strong>{buildingContext.building_name || 'Not specified'}</strong>
+                  <span>
+                    {buildingContext.management_phone || buildingContext.super_phone 
+                      ? 'Callback numbers configured'
+                      : 'No callback numbers'}
+                  </span>
+                </div>
+              </Card>
+
+              <Card className="review-card">
+                <div className="review-card-header">
+                  <Users size={18} className="text-green" />
+                  <span>Vendors & Organizations</span>
+                </div>
+                <div className="review-card-body">
+                  <div className="review-pills">
+                    {buildingContext.approved_vendors_input
+                      .split(/[,\n;]/)
+                      .filter(v => v.trim())
+                      .slice(0, 3)
+                      .map(v => <Pill key={v}>{v.trim()}</Pill>)}
+                    {buildingContext.trusted_id_organizations_input
+                      .split(/[,\n;]/)
+                      .filter(v => v.trim())
+                      .slice(0, 2)
+                      .map(v => <Pill key={v}>{v.trim()}</Pill>)}
+                    {!buildingContext.approved_vendors_input && !buildingContext.trusted_id_organizations_input && (
+                      <span className="text-muted">None configured</span>
+                    )}
+                  </div>
+                </div>
+              </Card>
+            </div>
+
+            {error && (
+              <Alert variant="error" icon={AlertTriangle}>
+                {error}
+              </Alert>
+            )}
+
+            <div className="step-actions">
+              <Button variant="ghost" onClick={handleBack} disabled={isVerifying}>
+                <ArrowLeft size={18} /> Back
+              </Button>
+              <Button onClick={handleSubmit} loading={isVerifying}>
+                {isVerifying ? 'Validating...' : 'Activate DoorWise'}
+                {!isVerifying && <ArrowRight size={18} />}
+              </Button>
+            </div>
+          </div>
+        );
+
+      default:
+        return null;
+    }
+  };
+
+  return (
+    <div className="setup-container">
+      {/* Header */}
+      <header className="setup-header">
+        <Link to="/" className="logo">
+          <ShieldCheck className="logo-icon" size={24} />
+          <span className="logo-text">DoorWise</span>
+        </Link>
+      </header>
+
+      {/* Main Content */}
+      <main className="setup-main">
+        <div className="setup-progress">
+          <ProgressSteps steps={STEPS} currentStep={currentStep} />
+          <span className="progress-label">
+            Step {currentStep + 1} of {STEPS.length}: {STEPS[currentStep]}
+          </span>
         </div>
-      </div>
+
+        <Card className="setup-card">
+          {renderStepContent()}
+        </Card>
+
+        {/* Help Section */}
+        <div className="setup-help">
+          <p>
+            DoorWise checks your address against HPD, registration data, and DOB permits 
+            to enable record-backed verification decisions.
+          </p>
+        </div>
+      </main>
     </div>
   );
 };
 
-export default AddressSetup;
+export default Setup;
