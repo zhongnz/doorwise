@@ -150,7 +150,18 @@ export function useVoice(onEvent, options = {}) {
       ws.binaryType = 'blob';
       wsRef.current = ws;
 
+      // Connection timeout - fail fast if backend is unavailable
+      const connectionTimeout = setTimeout(() => {
+        if (ws.readyState !== WebSocket.OPEN) {
+          ws.close();
+          setLastError('Voice server unavailable. Running in demo mode - use text input instead.');
+          setConnectionState('error');
+          stopMic();
+        }
+      }, 3000);
+
       ws.onopen = () => {
+        clearTimeout(connectionTimeout);
         const initialContext = initialContextRef.current.trim();
         if (initialContext) {
           ws.send(JSON.stringify({ type: 'init', text: initialContext }));
@@ -181,14 +192,17 @@ export function useVoice(onEvent, options = {}) {
       };
 
       ws.onclose = () => {
+        clearTimeout(connectionTimeout);
         setIsConnected(false);
         setConnectionState('idle');
         stopMic();
       };
 
       ws.onerror = () => {
-        setLastError('Voice websocket failed to connect.');
+        clearTimeout(connectionTimeout);
+        setLastError('Voice server unavailable. Use text input in demo mode.');
         setConnectionState('error');
+        stopMic();
       };
 
       processor.onaudioprocess = (event) => {
