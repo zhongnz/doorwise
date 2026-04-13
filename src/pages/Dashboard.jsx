@@ -4,7 +4,6 @@ import {
   AlertTriangle,
   Bell,
   BellRing,
-  ChevronDown,
   Database,
   MapPin,
   Mic,
@@ -30,7 +29,7 @@ import {
   STORAGE_KEYS,
   API_ENDPOINTS,
 } from '../lib/constants';
-import { Button, Badge, Card, Alert, Spinner } from '../components/common';
+import { Button, Badge, Alert, Spinner } from '../components/common';
 import {
   VoiceVisualizer,
   ConnectionStatus,
@@ -642,7 +641,7 @@ const Dashboard = () => {
   return (
     <div className="dashboard">
       {/* Header */}
-      <header className="dashboard-header glass-panel">
+      <header className="dashboard-header">
         <Link to="/" className="logo">
           <ShieldCheck className="logo-icon" size={22} />
           <span className="logo-text">DoorWise</span>
@@ -680,16 +679,16 @@ const Dashboard = () => {
       <main className="dashboard-main">
         {/* Left Column: Camera + Conversation */}
         <div className="dashboard-left">
-          <Card className="camera-card">
+          <div className="camera-card">
             <CameraPanel
               ref={videoRef}
               cameraReady={cameraReady}
               cameraError={cameraError}
               onResume={resumeCamera}
             />
-          </Card>
+          </div>
 
-          <Card className="conversation-card">
+          <div className="conversation-card">
             <div className="panel-header">
               <div className="header-left">
                 <Mic size={18} />
@@ -734,12 +733,12 @@ const Dashboard = () => {
                 <Send size={16} />
               </Button>
             </form>
-          </Card>
+          </div>
         </div>
 
         {/* Right Column: Decision + Actions */}
         <div className="dashboard-right">
-          <Card className="decision-card-wrapper">
+          <div className="decision-card-wrapper">
             <DecisionCard
               status={status}
               claim={currentClaim}
@@ -767,9 +766,9 @@ const Dashboard = () => {
               action={recommendedAction}
               contact={escalationContact}
             />
-          </Card>
+          </div>
 
-          <Card className="id-review-wrapper">
+          <div className="id-review-wrapper">
             <input
               ref={idFileInputRef}
               type="file"
@@ -787,16 +786,16 @@ const Dashboard = () => {
               onCapture={handleIdCapture}
               onUpload={handleIdUpload}
             />
-          </Card>
+          </div>
 
-          <Card className="data-card">
+          <div className="data-card">
             <DataChecks
               datasets={datasetResults}
               records={matchedRecords}
             />
-          </Card>
+          </div>
 
-          <Card className="incident-card">
+          <div className="incident-card">
             <IncidentLog
               incidents={incidentLog.map((inc, idx) => ({ ...inc, id: inc.id || `${inc.timestamp}-${idx}` }))}
               onDeleteIncident={(id) => {
@@ -811,7 +810,7 @@ const Dashboard = () => {
                 localStorage.removeItem(STORAGE_KEYS.incidents);
               }}
             />
-          </Card>
+          </div>
         </div>
       </main>
     </div>

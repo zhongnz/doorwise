@@ -78,20 +78,17 @@ const Setup = () => {
     setIsVerifying(true);
 
     try {
-      const response = await fetch('/api/address/validate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(address),
-      });
-
-      if (!response.ok) {
-        throw new Error('Could not validate this address against NYC records. Please check and try again.');
-      }
-
-      const data = await response.json();
+      // Construct the address label
+      const addressLabel = `${address.houseNumber} ${address.street}${address.apartment ? `, Apt ${address.apartment}` : ''}, ${address.borough}`;
+      
+      // Create the address object (works in demo mode without backend)
+      const addressData = {
+        ...address,
+        label: addressLabel,
+      };
       
       const normalizedBuildingContext = {
-        building_name: buildingContext.building_name.trim(),
+        building_name: buildingContext.building_name.trim() || addressLabel,
         management_phone: buildingContext.management_phone.trim(),
         super_phone: buildingContext.super_phone.trim(),
         approved_vendors: buildingContext.approved_vendors_input
@@ -104,13 +101,32 @@ const Setup = () => {
           .filter(Boolean),
       };
 
-      localStorage.setItem(STORAGE_KEYS.address, JSON.stringify(data.address));
-      localStorage.setItem(STORAGE_KEYS.addressValidation, JSON.stringify(data));
+      // Try to validate with backend, but proceed even if it fails (demo mode)
+      try {
+        const response = await fetch('/api/address/validate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(address),
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          localStorage.setItem(STORAGE_KEYS.address, JSON.stringify(data.address));
+          localStorage.setItem(STORAGE_KEYS.addressValidation, JSON.stringify(data));
+        } else {
+          // Use local data in demo mode
+          localStorage.setItem(STORAGE_KEYS.address, JSON.stringify(addressData));
+        }
+      } catch {
+        // Backend unavailable - use local data (demo mode)
+        localStorage.setItem(STORAGE_KEYS.address, JSON.stringify(addressData));
+      }
+
       localStorage.setItem(STORAGE_KEYS.buildingContext, JSON.stringify(normalizedBuildingContext));
       
       navigate('/dashboard');
     } catch (err) {
-      setError(err.message || 'Validation failed. Please try again.');
+      setError(err.message || 'Something went wrong. Please try again.');
     } finally {
       setIsVerifying(false);
     }

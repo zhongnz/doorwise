@@ -75,14 +75,14 @@
 }
 
 .log-action-btn:hover {
-  background: var(--bg-glass);
+  background: var(--bg-hover);
   color: var(--text-primary);
 }
 
 .log-action-btn.active {
   background: var(--accent-primary);
   border-color: var(--accent-primary);
-  color: var(--bg-primary);
+  color: var(--bg-base);
 }
 
 .log-action-btn.danger:hover {
@@ -212,7 +212,7 @@
   height: 32px;
   padding: 6px;
   border-radius: var(--radius-md);
-  background: var(--bg-glass);
+  background: var(--bg-hover);
 }
 
 .incident-icon.proceed {
@@ -356,7 +356,7 @@
   flex-direction: column;
   gap: var(--space-1);
   padding: var(--space-2);
-  background: var(--bg-glass);
+  background: var(--bg-elevated);
   border-radius: var(--radius-md);
   max-height: 120px;
   overflow-y: auto;
@@ -415,8 +415,8 @@
 /* Analytics Panel */
 .analytics-panel {
   padding: var(--space-4);
-  background: var(--bg-glass);
-  border: 1px solid var(--border-subtle);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-default);
   border-radius: var(--radius-lg);
   display: flex;
   flex-direction: column;

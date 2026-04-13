@@ -61,10 +61,10 @@ Button.displayName = 'Button';
 export const Badge = ({ children, variant = 'default', className, ...props }) => {
   const variantClasses = {
     default: 'badge-default',
-    blue: 'badge-blue',
-    amber: 'badge-amber',
-    green: 'badge-green',
-    red: 'badge-red',
+    primary: 'badge-primary',
+    success: 'badge-success',
+    warning: 'badge-warning',
+    error: 'badge-error',
   };
 
   return (
@@ -96,9 +96,9 @@ export const Input = forwardRef(({
   };
 
   return (
-    <div className="form-group">
+    <div className="input-group">
       {label && (
-        <label className="form-label">
+        <label className="input-label">
           {label}
         </label>
       )}
@@ -113,10 +113,10 @@ export const Input = forwardRef(({
         {...props}
       />
       {error && (
-        <span className="form-error">{error}</span>
+        <span className="input-error-text">{error}</span>
       )}
       {hint && !error && (
-        <span className="form-hint">{hint}</span>
+        <span className="input-hint">{hint}</span>
       )}
     </div>
   );
@@ -137,16 +137,16 @@ export const Select = forwardRef(({
   ...props
 }, ref) => {
   return (
-    <div className="form-group">
+    <div className="input-group">
       {label && (
-        <label className="form-label">
+        <label className="input-label">
           {label}
         </label>
       )}
       <select
         ref={ref}
         className={clsx(
-          'input select',
+          'input',
           error && 'input-error',
           className
         )}
@@ -155,10 +155,10 @@ export const Select = forwardRef(({
         {children}
       </select>
       {error && (
-        <span className="form-error">{error}</span>
+        <span className="input-error-text">{error}</span>
       )}
       {hint && !error && (
-        <span className="form-hint">{hint}</span>
+        <span className="input-hint">{hint}</span>
       )}
     </div>
   );
@@ -178,9 +178,9 @@ export const Textarea = forwardRef(({
   ...props
 }, ref) => {
   return (
-    <div className="form-group">
+    <div className="input-group">
       {label && (
-        <label className="form-label">
+        <label className="input-label">
           {label}
         </label>
       )}
@@ -194,10 +194,10 @@ export const Textarea = forwardRef(({
         {...props}
       />
       {error && (
-        <span className="form-error">{error}</span>
+        <span className="input-error-text">{error}</span>
       )}
       {hint && !error && (
-        <span className="form-hint">{hint}</span>
+        <span className="input-hint">{hint}</span>
       )}
     </div>
   );
@@ -207,14 +207,14 @@ Textarea.displayName = 'Textarea';
 
 /**
  * Card Component
- * Container with glass morphism styling
+ * Container with dark surface styling
  */
 export const Card = ({ children, className, elevated = false, ...props }) => {
   return (
     <div
       className={clsx(
-        'glass-panel',
-        elevated && 'glass-panel-elevated',
+        'card',
+        elevated && 'card-elevated',
         className
       )}
       {...props}
