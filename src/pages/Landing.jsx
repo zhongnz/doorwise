@@ -3,7 +3,7 @@ import './Landing.css';
 
 const Landing = () => {
   return (
-    <div className="landing-container">
+    <div className="landing-container" style={{ minHeight: '100vh' }}>
       <nav className="nav-bar glass-panel">
         <div className="logo">
           <span className="logo-text">DoorWise</span>
