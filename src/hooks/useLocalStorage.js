@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
+import { STORAGE_KEYS } from '../lib/constants';
 
 /**
  * Custom hook for persisting state to localStorage
@@ -69,20 +70,6 @@ export const useLocalStorage = (key, initialValue) => {
   }, [key]);
 
   return [storedValue, setValue, removeValue];
-};
-
-/**
- * Storage keys used throughout the application
- */
-export const STORAGE_KEYS = {
-  address: 'doorwise_address',
-  addressValidation: 'doorwise_address_validation',
-  buildingContext: 'doorwise_building_context',
-  incidents: 'doorwise_incidents',
-  buildings: 'doorwise_buildings',
-  activeBuilding: 'doorwise_active_building',
-  onboardingComplete: 'doorwise_onboarding_complete',
-  preferences: 'doorwise_preferences',
 };
 
 /**
