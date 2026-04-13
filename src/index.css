@@ -950,3 +950,202 @@ textarea.input {
 .switcher-add:hover {
   background: rgba(0, 212, 255, 0.05);
 }
+
+/* ===================== */
+/* FORM COMPONENTS       */
+/* ===================== */
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.form-label {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.form-error {
+  font-size: 0.875rem;
+  color: var(--status-blocked);
+}
+
+.form-hint {
+  font-size: 0.875rem;
+  color: var(--text-muted);
+}
+
+/* ===================== */
+/* ALERT COMPONENT       */
+/* ===================== */
+
+.alert {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border-radius: var(--radius-lg);
+  border: 1px solid;
+}
+
+.alert-icon {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.alert-content {
+  flex: 1;
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.alert-info {
+  background: rgba(0, 212, 255, 0.08);
+  border-color: rgba(0, 212, 255, 0.2);
+  color: #c9f4ff;
+}
+
+.alert-warning {
+  background: rgba(245, 158, 11, 0.08);
+  border-color: rgba(245, 158, 11, 0.2);
+  color: #fde68a;
+}
+
+.alert-error {
+  background: rgba(239, 68, 68, 0.08);
+  border-color: rgba(239, 68, 68, 0.2);
+  color: #fca5a5;
+}
+
+.alert-success {
+  background: rgba(16, 185, 129, 0.08);
+  border-color: rgba(16, 185, 129, 0.2);
+  color: #6ee7b7;
+}
+
+/* ===================== */
+/* EMPTY STATE           */
+/* ===================== */
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: var(--space-12) var(--space-6);
+}
+
+.empty-state-icon {
+  width: 64px;
+  height: 64px;
+  border-radius: var(--radius-xl);
+  background: rgba(255, 255, 255, 0.04);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: var(--space-4);
+  color: var(--text-muted);
+}
+
+.empty-state-title {
+  font-size: 1.125rem;
+  font-weight: 600;
+  margin-bottom: var(--space-2);
+}
+
+.empty-state-description {
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  max-width: 320px;
+}
+
+.empty-state-action {
+  margin-top: var(--space-4);
+}
+
+/* ===================== */
+/* PROGRESS STEPS        */
+/* ===================== */
+
+.progress-steps {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.progress-step-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.progress-step-circle {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.875rem;
+  font-weight: 600;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-muted);
+  transition: all var(--transition-fast);
+}
+
+.progress-step-circle.active {
+  background: var(--accent-blue);
+  color: #000;
+}
+
+.progress-step-circle.completed {
+  background: var(--status-verified);
+  color: #fff;
+}
+
+.progress-step-line {
+  width: 32px;
+  height: 2px;
+  border-radius: var(--radius-full);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.progress-step-line.completed {
+  background: var(--status-verified);
+}
+
+/* ===================== */
+/* PILL COMPONENT        */
+/* ===================== */
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 6px 12px;
+  border-radius: var(--radius-full);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border-glass);
+  font-size: 0.875rem;
+  color: var(--text-primary);
+}
+
+/* ===================== */
+/* ICON BUTTON SIZES     */
+/* ===================== */
+
+.btn-icon-sm {
+  padding: 6px;
+}
+
+.btn-icon-md {
+  padding: 8px;
+}
+
+.btn-icon-lg {
+  padding: 12px;
+}
