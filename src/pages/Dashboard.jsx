@@ -115,6 +115,9 @@ const buildVoiceContext = (address, buildingContext) => {
   return parts.join(' ');
 };
 
+// Check if we're in demo mode (no backend available)
+const isDemoMode = !import.meta.env.VITE_ENABLE_PROXY;
+
 const Dashboard = () => {
   const navigate = useNavigate();
   const videoRef = useRef(null);
@@ -241,6 +244,80 @@ const Dashboard = () => {
     clearDecision();
   }, [disconnect, clearDecision]);
 
+  // Demo mode mock responses based on claim keywords
+  const getDemoResponse = useCallback((claim) => {
+    const lowerClaim = claim.toLowerCase();
+    
+    // HPD inspector claims - verify against mock violations
+    if (lowerClaim.includes('hpd') || lowerClaim.includes('inspector') || lowerClaim.includes('lead paint') || lowerClaim.includes('violation')) {
+      return {
+        decision: DECISION_STATUS.PROCEED_AFTER_ID_CHECK,
+        reasoning: 'Found matching HPD violation for lead paint inspection scheduled this month.',
+        recommended_action: 'Ask the inspector to show their HPD badge and verify the badge number.',
+        recommended_script: 'Please hold your HPD inspector badge up to the camera so I can verify.',
+        escalation_contact: buildingContext?.management_phone || '(212) 555-0100',
+        confidence: 'high',
+        playbook: 'inspector',
+        datasets: [
+          { name: 'HPD Violations', status: 'match', records: 1 },
+          { name: 'DOB Permits', status: 'no_match', records: 0 },
+        ],
+        matched_records: [
+          { type: 'violation', description: 'Lead paint inspection required', date: '2026-04-01' }
+        ],
+      };
+    }
+    
+    // Contractor/repair claims
+    if (lowerClaim.includes('contractor') || lowerClaim.includes('repair') || lowerClaim.includes('plumber') || lowerClaim.includes('electrician')) {
+      return {
+        decision: DECISION_STATUS.CALL_TO_CONFIRM,
+        reasoning: 'No matching work order or permit found for this contractor visit.',
+        recommended_action: 'Call building management to confirm this work was scheduled.',
+        recommended_script: 'I need to verify this with building management. Please wait.',
+        escalation_contact: buildingContext?.management_phone || '(212) 555-0100',
+        confidence: 'medium',
+        playbook: 'contractor',
+        datasets: [
+          { name: 'DOB Permits', status: 'no_match', records: 0 },
+          { name: 'Approved Vendors', status: 'no_match', records: 0 },
+        ],
+        matched_records: [],
+      };
+    }
+    
+    // Management claims
+    if (lowerClaim.includes('management') || lowerClaim.includes('landlord') || lowerClaim.includes('super')) {
+      return {
+        decision: DECISION_STATUS.CALL_TO_CONFIRM,
+        reasoning: 'Management visit requires phone verification.',
+        recommended_action: 'Call the building super to confirm this visit.',
+        recommended_script: 'Let me verify this with building staff. One moment please.',
+        escalation_contact: buildingContext?.super_phone || buildingContext?.management_phone || '(212) 555-0100',
+        confidence: 'medium',
+        playbook: 'management',
+        datasets: [],
+        matched_records: [],
+      };
+    }
+    
+    // Unknown/suspicious claims
+    return {
+      decision: DECISION_STATUS.DO_NOT_OPEN,
+      reasoning: 'Unable to verify this claim against any building records.',
+      recommended_action: 'Do not open. Ask them to schedule through management.',
+      recommended_script: 'I cannot verify your visit. Please contact building management to schedule.',
+      escalation_contact: buildingContext?.management_phone || '911',
+      confidence: 'low',
+      playbook: 'manual-review',
+      datasets: [
+        { name: 'HPD Violations', status: 'no_match', records: 0 },
+        { name: 'DOB Permits', status: 'no_match', records: 0 },
+      ],
+      matched_records: [],
+    };
+  }, [buildingContext]);
+
   // Verification
   const triggerVerification = useCallback(async (claim) => {
     if (!address) return;
@@ -256,6 +333,38 @@ const Dashboard = () => {
     setConfidence('');
     setPlaybook('');
     appendTranscript({ role: 'agent', text: 'Checking building records now.' });
+
+    // In demo mode, use mock data with a slight delay for realism
+    if (isDemoMode) {
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      const data = getDemoResponse(claim);
+      
+      setStatus(data.decision);
+      setDatasetResults(data.datasets || []);
+      setDecisionReasoning(data.reasoning || '');
+      setRecommendedScript(data.recommended_script || '');
+      setRecommendedAction(data.recommended_action || '');
+      setEscalationContact(data.escalation_contact || '');
+      setMatchedRecords(data.matched_records || []);
+      setConfidence(data.confidence || '');
+      setPlaybook(data.playbook || '');
+      appendTranscript({ role: 'agent', text: data.recommended_action || data.reasoning });
+
+      // Save incident
+      const incident = {
+        timestamp: new Date().toISOString(),
+        claim,
+        decision: data.decision,
+        playbook: data.playbook,
+        reasoning: data.reasoning,
+      };
+      setIncidentLog((prev) => {
+        const next = [incident, ...prev].slice(0, 50);
+        localStorage.setItem(STORAGE_KEYS.incidents, JSON.stringify(next));
+        return next;
+      });
+      return;
+    }
 
     try {
       const response = await fetch(API_ENDPOINTS.VERIFY, {
@@ -310,7 +419,7 @@ const Dashboard = () => {
       setPlaybook('manual-review');
       appendTranscript({ role: 'agent', text: 'Verification service unavailable. Defaulting to manual review.' });
     }
-  }, [address, buildingContext, appendTranscript]);
+  }, [address, buildingContext, appendTranscript, getDemoResponse]);
 
   // Effects
   useEffect(() => {
@@ -700,6 +809,7 @@ const Dashboard = () => {
                 onDisconnect={disconnect}
                 sessionLocked={sessionLocked}
                 onReset={resetSession}
+                demoMode={isDemoMode}
               />
             </div>
 
@@ -725,7 +835,7 @@ const Dashboard = () => {
                 type="text"
                 value={claimInput}
                 onChange={(e) => setClaimInput(e.target.value)}
-                placeholder="Type visitor claim or use voice..."
+                placeholder={isDemoMode ? "Type a claim (e.g., 'HPD inspector for lead paint')..." : "Type visitor claim or use voice..."}
                 disabled={sessionLocked}
                 className="input"
               />

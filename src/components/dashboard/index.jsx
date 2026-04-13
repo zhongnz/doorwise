@@ -48,13 +48,22 @@ export const VoiceVisualizer = ({ isActive, isSpeaking, className }) => {
 /**
  * Connection Status Badge
  */
-export const ConnectionStatus = ({ state, onConnect, onDisconnect, sessionLocked, onReset }) => {
+export const ConnectionStatus = ({ state, onConnect, onDisconnect, sessionLocked, onReset, demoMode }) => {
   if (sessionLocked) {
     return (
       <Button variant="ghost" size="sm" onClick={onReset}>
         <RotateCcw size={14} />
         Next Visitor
       </Button>
+    );
+  }
+
+  // In demo mode, show demo indicator instead of connect button
+  if (demoMode) {
+    return (
+      <Badge variant="warning" className="demo-badge">
+        Demo Mode
+      </Badge>
     );
   }
 
