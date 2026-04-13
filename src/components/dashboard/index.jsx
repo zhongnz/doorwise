@@ -58,15 +58,6 @@ export const ConnectionStatus = ({ state, onConnect, onDisconnect, sessionLocked
     );
   }
 
-  // In demo mode, show demo indicator instead of connect button
-  if (demoMode) {
-    return (
-      <Badge variant="warning" className="demo-badge">
-        Demo Mode
-      </Badge>
-    );
-  }
-
   if (state === 'connected') {
     return (
       <Button variant="ghost" size="sm" onClick={onDisconnect}>
@@ -85,11 +76,27 @@ export const ConnectionStatus = ({ state, onConnect, onDisconnect, sessionLocked
     );
   }
 
+  if (state === 'error') {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        {demoMode && <Badge variant="warning">Demo</Badge>}
+        <Button variant="ghost" size="sm" onClick={onConnect}>
+          <WifiOff size={14} style={{ color: 'var(--status-error)' }} />
+          Retry
+        </Button>
+      </div>
+    );
+  }
+
+  // Show demo badge alongside connect button in demo mode
   return (
-    <Button variant="success" size="sm" onClick={onConnect}>
-      <Mic size={14} />
-      Connect Voice
-    </Button>
+    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+      {demoMode && <Badge variant="warning">Demo</Badge>}
+      <Button variant="success" size="sm" onClick={onConnect}>
+        <Mic size={14} />
+        Voice
+      </Button>
+    </div>
   );
 };
 
