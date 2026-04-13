@@ -61,9 +61,46 @@ function useBrowserVoice(onEvent) {
       utterance.voice = preferredVoice;
     }
     
-    utterance.onstart = () => setIsSpeaking(true);
-    utterance.onend = () => setIsSpeaking(false);
-    utterance.onerror = () => setIsSpeaking(false);
+    // Pause recognition while speaking to prevent echo
+    utterance.onstart = () => {
+      setIsSpeaking(true);
+      // Stop recognition to prevent picking up our own voice
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.stop();
+        } catch (e) {
+          // Already stopped
+        }
+      }
+    };
+    
+    utterance.onend = () => {
+      setIsSpeaking(false);
+      // Resume recognition after speaking
+      if (isListeningRef.current && recognitionRef.current) {
+        setTimeout(() => {
+          try {
+            recognitionRef.current?.start();
+          } catch (e) {
+            // Already started
+          }
+        }, 300); // Small delay to avoid catching tail end of speech
+      }
+    };
+    
+    utterance.onerror = () => {
+      setIsSpeaking(false);
+      // Resume recognition on error too
+      if (isListeningRef.current && recognitionRef.current) {
+        setTimeout(() => {
+          try {
+            recognitionRef.current?.start();
+          } catch (e) {
+            // Already started
+          }
+        }, 300);
+      }
+    };
     
     synthRef.current = utterance;
     window.speechSynthesis.speak(utterance);
