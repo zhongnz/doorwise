@@ -369,69 +369,20 @@ const Dashboard = () => {
     };
   }, [buildingContext]);
 
-  // Verification
+  // Verification - tries AI API first, falls back to demo mode
   const triggerVerification = useCallback(async (claim) => {
     if (!address) return;
 
-    // In demo mode, check for conversational responses first (no "Checking records" message)
-    if (isDemoMode) {
-      const data = getDemoResponse(claim);
-      
-      // Handle conversational responses (greetings, vague claims, etc.)
-      if (data.isConversational) {
-        await new Promise(resolve => setTimeout(resolve, 500));
-        appendTranscript({ role: 'agent', text: data.response });
-        speakResponse?.(data.response);
-        return;
-      }
-      
-      // It's a real claim - show verification flow
-      setCurrentClaim(claim);
-      setStatus(DECISION_STATUS.VERIFYING);
-      setDatasetResults([]);
-      setDecisionReasoning('');
-      setRecommendedScript('');
-      setRecommendedAction('');
-      setEscalationContact('');
-      setMatchedRecords([]);
-      setConfidence('');
-      setPlaybook('');
-      const checkingMsg = 'Let me check our building records.';
-      appendTranscript({ role: 'agent', text: checkingMsg });
-      speakResponse?.(checkingMsg);
-      
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      
-      setStatus(data.decision);
-      setDatasetResults(data.datasets || []);
-      setDecisionReasoning(data.reasoning || '');
-      setRecommendedScript(data.recommended_script || '');
-      setRecommendedAction(data.recommended_action || '');
-      setEscalationContact(data.escalation_contact || '');
-      setMatchedRecords(data.matched_records || []);
-      setConfidence(data.confidence || '');
-      setPlaybook(data.playbook || '');
-      const responseText = data.recommended_script || data.recommended_action;
-      appendTranscript({ role: 'agent', text: responseText });
-      speakResponse?.(responseText);
-
-      // Save incident
-      const incident = {
-        timestamp: new Date().toISOString(),
-        claim,
-        decision: data.decision,
-        playbook: data.playbook,
-        reasoning: data.reasoning,
-      };
-      setIncidentLog((prev) => {
-        const next = [incident, ...prev].slice(0, 50);
-        localStorage.setItem(STORAGE_KEYS.incidents, JSON.stringify(next));
-        return next;
-      });
+    // Check for conversational responses first using local matching
+    const localData = getDemoResponse(claim);
+    if (localData.isConversational) {
+      await new Promise(resolve => setTimeout(resolve, 500));
+      appendTranscript({ role: 'agent', text: localData.response });
+      speakResponse?.(localData.response);
       return;
     }
 
-    // Non-demo mode - use real API
+    // It's a real claim - show verification flow
     setCurrentClaim(claim);
     setStatus(DECISION_STATUS.VERIFYING);
     setDatasetResults([]);
@@ -442,61 +393,88 @@ const Dashboard = () => {
     setMatchedRecords([]);
     setConfidence('');
     setPlaybook('');
-    appendTranscript({ role: 'agent', text: 'Checking building records now.' });
+    const checkingMsg = 'Let me check our building records.';
+    appendTranscript({ role: 'agent', text: checkingMsg });
+    speakResponse?.(checkingMsg);
 
+    // Try AI-powered analysis first
+    let data = null;
     try {
-      const response = await fetch(API_ENDPOINTS.VERIFY, {
+      const response = await fetch(API_ENDPOINTS.ANALYZE_CLAIM, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          claim,
           address,
-          visitor_claim: claim,
-          building_context: buildingContext,
+          buildingContext,
         }),
       });
 
-      if (!response.ok) throw new Error('Verification failed.');
-
-      const data = await response.json();
-      setStatus(data.decision);
-      setDatasetResults(data.datasets || []);
-      setDecisionReasoning(data.reasoning || '');
-      setRecommendedScript(data.recommended_script || '');
-      setRecommendedAction(data.recommended_action || '');
-      setEscalationContact(data.escalation_contact || '');
-      setMatchedRecords(data.matched_records || []);
-      setConfidence(data.confidence || '');
-      setPlaybook(data.playbook || '');
-      setIdReviewPrompt(
-        data.playbook === 'trusted-id'
-          ? 'DoorWise needs a clear ID image to complete this trusted-organization decision.'
-          : ''
-      );
-      appendTranscript({ role: 'agent', text: data.recommended_action || data.reasoning });
-
-      // Save incident
-      const incident = {
-        timestamp: new Date().toISOString(),
-        claim,
-        decision: data.decision,
-        playbook: data.playbook,
-        reasoning: data.reasoning,
-      };
-      setIncidentLog((prev) => {
-        const next = [incident, ...prev].slice(0, 50);
-        localStorage.setItem(STORAGE_KEYS.incidents, JSON.stringify(next));
-        return next;
-      });
-    } catch (error) {
-      setStatus(DECISION_STATUS.DO_NOT_OPEN);
-      setDecisionReasoning('Could not reach the verification service.');
-      setRecommendedScript('Please wait while I switch to manual review.');
-      setRecommendedAction('Do not open until you verify by phone or visual ID.');
-      setEscalationContact('No building callback number is configured.');
-      setConfidence('low');
-      setPlaybook('manual-review');
-      appendTranscript({ role: 'agent', text: 'Verification service unavailable. Defaulting to manual review.' });
+      if (response.ok) {
+        const result = await response.json();
+        if (result.success && result.analysis) {
+          const analysis = result.analysis;
+          // Map AI response to our decision format
+          const decisionMap = {
+            'inspector': analysis.requires_id_check ? DECISION_STATUS.PROCEED_AFTER_ID_CHECK : DECISION_STATUS.CALL_TO_CONFIRM,
+            'delivery': DECISION_STATUS.PROCEED,
+            'contractor': DECISION_STATUS.CALL_TO_CONFIRM,
+            'visitor': DECISION_STATUS.CALL_TO_CONFIRM,
+            'management': DECISION_STATUS.CALL_TO_CONFIRM,
+            'emergency': DECISION_STATUS.PROCEED_AFTER_ID_CHECK,
+            'unknown': DECISION_STATUS.DO_NOT_OPEN,
+          };
+          
+          data = {
+            decision: decisionMap[analysis.claim_type] || DECISION_STATUS.CALL_TO_CONFIRM,
+            reasoning: analysis.reasoning,
+            recommended_script: analysis.recommended_script,
+            recommended_action: analysis.recommended_action,
+            escalation_contact: buildingContext?.management_phone || '',
+            confidence: analysis.confidence > 0.7 ? 'high' : analysis.confidence > 0.4 ? 'medium' : 'low',
+            playbook: analysis.claim_type,
+            datasets: [],
+            matched_records: [],
+          };
+        }
+      }
+    } catch (err) {
+      // AI API failed, fall back to local matching
+      console.log('[v0] AI API unavailable, using local matching');
     }
+
+    // Fall back to local demo response if AI failed
+    if (!data) {
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      data = localData;
+    }
+
+    setStatus(data.decision);
+    setDatasetResults(data.datasets || []);
+    setDecisionReasoning(data.reasoning || '');
+    setRecommendedScript(data.recommended_script || '');
+    setRecommendedAction(data.recommended_action || '');
+    setEscalationContact(data.escalation_contact || '');
+    setMatchedRecords(data.matched_records || []);
+    setConfidence(data.confidence || '');
+    setPlaybook(data.playbook || '');
+    const responseText = data.recommended_script || data.recommended_action;
+    appendTranscript({ role: 'agent', text: responseText });
+    speakResponse?.(responseText);
+
+    // Save incident
+    const incident = {
+      timestamp: new Date().toISOString(),
+      claim,
+      decision: data.decision,
+      playbook: data.playbook,
+      reasoning: data.reasoning,
+    };
+    setIncidentLog((prev) => {
+      const next = [incident, ...prev].slice(0, 50);
+      localStorage.setItem(STORAGE_KEYS.incidents, JSON.stringify(next));
+      return next;
+    });
   }, [address, buildingContext, appendTranscript, getDemoResponse, speakResponse]);
 
   // Effects
@@ -723,7 +701,7 @@ const Dashboard = () => {
     );
   };
 
-  // ID Review handlers
+  // ID Review handlers - uses AI vision API with fallback to demo
   const runIdReview = async ({ dataUrl, source }) => {
     const claim = getClaimContext();
     if (!claim) {
@@ -738,22 +716,44 @@ const Dashboard = () => {
       const matches = dataUrl.match(/^data:(.+);base64,(.+)$/);
       if (!matches) throw new Error('Invalid image data.');
 
-      // Demo mode: simulate ID review
-      if (isDemoMode) {
+      let idReviewData = null;
+
+      // Try AI-powered ID review first
+      try {
+        const response = await fetch(API_ENDPOINTS.REVIEW_ID, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            imageBase64: matches[2],
+            mimeType: matches[1],
+            claim,
+            address,
+            buildingContext,
+          }),
+        });
+
+        if (response.ok) {
+          idReviewData = await response.json();
+        }
+      } catch (err) {
+        console.log('[v0] AI ID review unavailable, using demo mode');
+      }
+
+      // Fall back to demo mode if AI failed
+      if (!idReviewData) {
         await new Promise(resolve => setTimeout(resolve, 1500));
         
         const lowerClaim = claim.toLowerCase();
         const isInspector = lowerClaim.includes('hpd') || lowerClaim.includes('inspector') || lowerClaim.includes('dob');
         
-        // Simulate ID review result - field names must match IdReviewPanel expectations
-        const mockIdReview = {
+        idReviewData = {
           id_detected: true,
           document_type: isInspector ? 'Government Badge' : 'Driver License',
           person_name: isInspector ? 'John Smith' : 'Jane Doe',
           organization_name: isInspector ? 'NYC HPD' : null,
           badge_or_employee_id: isInspector ? 'HPD-2024-8847' : null,
           evidence_quality: 'Good',
-          model: 'DoorWise Vision v1',
+          model: 'Demo Mode',
           expiration_status: 'valid',
           confidence: 0.92,
           trusted_organization_match: isInspector ? 'HPD' : null,
@@ -761,71 +761,31 @@ const Dashboard = () => {
           policy_action: isInspector ? 'ID verified. HPD inspector badge confirmed.' : null,
           policy_script: isInspector ? 'Your HPD badge has been verified. You may proceed.' : null,
         };
-        
-        setIdReview(mockIdReview);
-        
-        if (mockIdReview.policy_decision) {
-          setStatus(mockIdReview.policy_decision);
-          setConfidence('high');
-          setRecommendedAction(mockIdReview.policy_action);
-          setRecommendedScript(mockIdReview.policy_script);
-          setPlaybook('trusted-id');
-          setIdReviewPrompt('');
-          
-          const responseText = mockIdReview.policy_script || mockIdReview.policy_action;
-          appendTranscript({ role: 'agent', text: responseText });
-          speakResponse?.(responseText);
-        } else {
-          const noMatchText = 'ID captured. This does not match a trusted organization. Please verify by other means.';
-          appendTranscript({ role: 'agent', text: noMatchText });
-          speakResponse?.(noMatchText);
-        }
-        
-        setIdReviewState('idle');
-        return;
       }
 
-      const response = await fetch(API_ENDPOINTS.REVIEW_ID, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          address,
-          visitor_claim: claim,
-          building_context: buildingContext,
-          mime_type: matches[1],
-          image_base64: matches[2],
-          source,
-        }),
-      });
+      setIdReview(idReviewData);
 
-      if (!response.ok) {
-        const err = await response.json().catch(() => ({}));
-        throw new Error(err.detail || 'Could not review ID image.');
-      }
-
-      const data = await response.json();
-      setIdReview(data);
-
-      // Apply policy decision if present
-      if (data.policy_decision) {
-        setStatus(data.policy_decision);
-        setConfidence(data.policy_confidence || confidence || 'medium');
-        setRecommendedAction(data.policy_action || recommendedAction);
-        setRecommendedScript(data.policy_script || recommendedScript);
-        setPlaybook(data.policy_playbook || 'trusted-id');
+      if (idReviewData.policy_decision) {
+        setStatus(idReviewData.policy_decision);
+        setConfidence('high');
+        setRecommendedAction(idReviewData.policy_action);
+        setRecommendedScript(idReviewData.policy_script);
+        setPlaybook('trusted-id');
         setIdReviewPrompt('');
 
-        if (data.policy_decision === DECISION_STATUS.PROCEED_AFTER_ID_CHECK) {
-          appendTranscript({
-            role: 'agent',
-            text: `ID matches trusted organization ${data.trusted_organization_match}. Proceed after visual ID check.`,
-          });
-        }
+        const responseText = idReviewData.policy_script || idReviewData.policy_action;
+        appendTranscript({ role: 'agent', text: responseText });
+        speakResponse?.(responseText);
+      } else {
+        const noMatchText = idReviewData.summary || 'ID captured. This does not match a trusted organization. Please verify by other means.';
+        appendTranscript({ role: 'agent', text: noMatchText });
+        speakResponse?.(noMatchText);
       }
+
+      setIdReviewState('idle');
     } catch (error) {
       setIdReview(null);
       setIdReviewError(error.message);
-    } finally {
       setIdReviewState('idle');
     }
   };

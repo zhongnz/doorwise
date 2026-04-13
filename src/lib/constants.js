@@ -12,6 +12,7 @@ import {
 export const DECISION_STATUS = {
   LISTENING: 'LISTENING',
   VERIFYING: 'VERIFYING',
+  PROCEED: 'PROCEED',
   PROCEED_AFTER_ID_CHECK: 'PROCEED_AFTER_ID_CHECK',
   CALL_TO_CONFIRM: 'CALL_TO_CONFIRM',
   DO_NOT_OPEN: 'DO_NOT_OPEN',
@@ -22,6 +23,7 @@ export const DECISION_STATUS = {
  * Terminal decisions that end a session
  */
 export const TERMINAL_DECISIONS = [
+  DECISION_STATUS.PROCEED,
   DECISION_STATUS.PROCEED_AFTER_ID_CHECK,
   DECISION_STATUS.CALL_TO_CONFIRM,
   DECISION_STATUS.DO_NOT_OPEN,
@@ -33,6 +35,7 @@ export const TERMINAL_DECISIONS = [
 export const DECISION_ICONS = {
   [DECISION_STATUS.LISTENING]: ShieldCheck,
   [DECISION_STATUS.VERIFYING]: Database,
+  [DECISION_STATUS.PROCEED]: ShieldCheck,
   [DECISION_STATUS.PROCEED_AFTER_ID_CHECK]: ShieldCheck,
   [DECISION_STATUS.CALL_TO_CONFIRM]: ShieldAlert,
   [DECISION_STATUS.DO_NOT_OPEN]: ShieldX,
@@ -45,6 +48,7 @@ export const DECISION_ICONS = {
 export const DECISION_LABELS = {
   [DECISION_STATUS.LISTENING]: 'Waiting',
   [DECISION_STATUS.VERIFYING]: 'Checking',
+  [DECISION_STATUS.PROCEED]: 'Proceed',
   [DECISION_STATUS.PROCEED_AFTER_ID_CHECK]: 'Proceed After ID Check',
   [DECISION_STATUS.CALL_TO_CONFIRM]: 'Call To Confirm',
   [DECISION_STATUS.DO_NOT_OPEN]: 'Do Not Open',
@@ -57,6 +61,7 @@ export const DECISION_LABELS = {
 export const DECISION_VARIANTS = {
   [DECISION_STATUS.LISTENING]: 'info',
   [DECISION_STATUS.VERIFYING]: 'warning',
+  [DECISION_STATUS.PROCEED]: 'success',
   [DECISION_STATUS.PROCEED_AFTER_ID_CHECK]: 'success',
   [DECISION_STATUS.CALL_TO_CONFIRM]: 'warning',
   [DECISION_STATUS.DO_NOT_OPEN]: 'danger',
@@ -67,6 +72,10 @@ export const DECISION_VARIANTS = {
  * Decision outcomes for incident log display
  */
 export const DECISION_OUTCOMES = {
+  PROCEED: {
+    label: 'Allowed',
+    color: 'var(--status-verified)',
+  },
   PROCEED_AFTER_ID_CHECK: {
     label: 'Verified',
     color: 'var(--status-verified)',
@@ -145,17 +154,17 @@ export const PLAYBOOK_LABELS = {
  */
 export const DEMO_BUILDING = {
   address: {
-    houseNumber: '370',
-    street: 'Jay Street',
+    houseNumber: '6',
+    street: 'MetroTech Center',
     borough: 'BROOKLYN',
-    apartment: '317',
+    apartment: '',
   },
   context: {
-    building_name: '370 Jay Street Apartments',
-    management_phone: '212-555-0100',
-    super_phone: '646-555-0111',
-    approved_vendors_input: 'Ace Plumbing, BrightWire Electric',
-    trusted_id_organizations_input: 'New York University, NYU',
+    building_name: '6 MetroTech Center',
+    management_phone: '718-260-3600',
+    super_phone: '718-260-3601',
+    approved_vendors_input: 'ABM Industries, CBRE, JLL',
+    trusted_id_organizations_input: 'NYU Tandon, Con Edison, National Grid, HPD, DOB, FDNY',
   },
 };
 
@@ -235,6 +244,7 @@ export const API_ENDPOINTS = {
   VALIDATE_ADDRESS: '/api/address/validate',
   VERIFY: '/api/verify',
   REVIEW_ID: '/api/review-id',
+  ANALYZE_CLAIM: '/api/analyze-claim',
   VOICE_WEBSOCKET: '/ws/chat',
 };
 
