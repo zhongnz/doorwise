@@ -18,7 +18,6 @@ import {
   ShieldX,
   Upload,
   Video,
-  Waveform,
   Wifi,
   WifiOff,
 } from 'lucide-react';
@@ -103,7 +102,7 @@ export const TranscriptBubble = ({ message, isPartial }) => {
         </span>
         {isPartial && (
           <Badge variant="default" className="transcript-status">
-            <Waveform size={10} />
+            <Activity size={10} />
             Listening
           </Badge>
         )}
