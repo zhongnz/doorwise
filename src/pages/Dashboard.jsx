@@ -343,13 +343,17 @@ const Dashboard = () => {
       };
     }
     
-    // Visitor for a specific apartment
-    if (lowerClaim.includes('visiting') || lowerClaim.includes('guest') || lowerClaim.includes('friend') || lowerClaim.includes('family') || lowerClaim.match(/apt|apartment|unit|#?\d+[a-z]?/i)) {
+    // Visitor for a specific person or apartment - "I'm here to see Peter", "visiting John in 5A"
+    if (lowerClaim.includes('here to see') || lowerClaim.includes('visiting') || lowerClaim.includes('guest') || lowerClaim.includes('friend') || lowerClaim.includes('family') || lowerClaim.includes('for') || lowerClaim.match(/apt|apartment|unit|#?\d+[a-z]?/i)) {
+      // Extract the person's name if present
+      const seeMatch = claim.match(/(?:here to see|visiting|for)\s+(\w+)/i);
+      const personName = seeMatch ? seeMatch[1] : 'the resident';
+      
       return {
         decision: DECISION_STATUS.CALL_TO_CONFIRM,
-        reasoning: 'Personal visitor. Resident confirmation required.',
-        recommended_action: 'Call the resident to confirm they are expecting this visitor.',
-        recommended_script: 'Let me contact the resident to confirm your visit. One moment.',
+        reasoning: `Personal visitor for ${personName}. Resident confirmation required.`,
+        recommended_action: `Call ${personName} to confirm they are expecting this visitor.`,
+        recommended_script: `Let me contact ${personName} to confirm your visit. One moment please.`,
         escalation_contact: 'Resident intercom',
         confidence: 'medium',
         playbook: 'visitor',

@@ -27,6 +27,11 @@ function useBrowserVoice(onEvent) {
   const analyserRef = useRef(null);
   const mediaStreamRef = useRef(null);
   const animationFrameRef = useRef(null);
+  
+  // Debouncing for final transcripts - accumulate and wait for pause
+  const pendingTranscriptRef = useRef('');
+  const debounceTimerRef = useRef(null);
+  const DEBOUNCE_MS = 1200; // Wait 1.2 seconds of silence before processing
 
   useEffect(() => {
     onEventRef.current = onEvent;
@@ -123,6 +128,11 @@ function useBrowserVoice(onEvent) {
   }, []);
 
   const disconnect = useCallback(() => {
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+      debounceTimerRef.current = null;
+    }
+    pendingTranscriptRef.current = '';
     if (recognitionRef.current) {
       recognitionRef.current.stop();
       recognitionRef.current = null;
@@ -187,24 +197,43 @@ function useBrowserVoice(onEvent) {
           }
         }
 
-        // Show interim results
-        if (interimTranscript) {
+        // Show current state (pending + interim)
+        const displayText = (pendingTranscriptRef.current + ' ' + (interimTranscript || finalTranscript)).trim();
+        if (displayText) {
           onEventRef.current?.({ 
             kind: 'transcript', 
-            message: { role: 'visitor', text: interimTranscript, isPartial: true }
+            message: { role: 'visitor', text: displayText, isPartial: true }
           });
         }
 
-        // Process final results
+        // Accumulate final results
         if (finalTranscript) {
-          onEventRef.current?.({ 
-            kind: 'transcript', 
-            message: { role: 'visitor', text: finalTranscript }
-          });
-          onEventRef.current?.({ 
-            kind: 'visitor_claim', 
-            text: finalTranscript 
-          });
+          pendingTranscriptRef.current = (pendingTranscriptRef.current + ' ' + finalTranscript).trim();
+          
+          // Clear any existing debounce timer
+          if (debounceTimerRef.current) {
+            clearTimeout(debounceTimerRef.current);
+          }
+          
+          // Start debounce timer - process claim after silence
+          debounceTimerRef.current = setTimeout(() => {
+            const fullClaim = pendingTranscriptRef.current.trim();
+            if (fullClaim) {
+              // Show final transcript
+              onEventRef.current?.({ 
+                kind: 'transcript', 
+                message: { role: 'visitor', text: fullClaim }
+              });
+              // Send as claim for verification
+              onEventRef.current?.({ 
+                kind: 'visitor_claim', 
+                text: fullClaim 
+              });
+              // Clear pending
+              pendingTranscriptRef.current = '';
+            }
+            debounceTimerRef.current = null;
+          }, DEBOUNCE_MS);
         }
       };
 
