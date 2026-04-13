@@ -738,6 +738,51 @@ const Dashboard = () => {
       const matches = dataUrl.match(/^data:(.+);base64,(.+)$/);
       if (!matches) throw new Error('Invalid image data.');
 
+      // Demo mode: simulate ID review
+      if (isDemoMode) {
+        await new Promise(resolve => setTimeout(resolve, 1500));
+        
+        const lowerClaim = claim.toLowerCase();
+        const isInspector = lowerClaim.includes('hpd') || lowerClaim.includes('inspector') || lowerClaim.includes('dob');
+        
+        // Simulate ID review result
+        const mockIdReview = {
+          id_detected: true,
+          id_type: isInspector ? 'Government Badge' : 'Driver License',
+          name_extracted: isInspector ? 'John Smith' : 'Jane Doe',
+          organization_extracted: isInspector ? 'NYC HPD' : null,
+          badge_number: isInspector ? 'HPD-2024-8847' : null,
+          expiration_status: 'valid',
+          confidence: 0.92,
+          trusted_organization_match: isInspector ? 'HPD' : null,
+          policy_decision: isInspector ? DECISION_STATUS.PROCEED : null,
+          policy_action: isInspector ? 'ID verified. HPD inspector badge confirmed.' : null,
+          policy_script: isInspector ? 'Your HPD badge has been verified. You may proceed.' : null,
+        };
+        
+        setIdReview(mockIdReview);
+        
+        if (mockIdReview.policy_decision) {
+          setStatus(mockIdReview.policy_decision);
+          setConfidence('high');
+          setRecommendedAction(mockIdReview.policy_action);
+          setRecommendedScript(mockIdReview.policy_script);
+          setPlaybook('trusted-id');
+          setIdReviewPrompt('');
+          
+          const responseText = mockIdReview.policy_script || mockIdReview.policy_action;
+          appendTranscript({ role: 'agent', text: responseText });
+          speakResponse?.(responseText);
+        } else {
+          const noMatchText = 'ID captured. This does not match a trusted organization. Please verify by other means.';
+          appendTranscript({ role: 'agent', text: noMatchText });
+          speakResponse?.(noMatchText);
+        }
+        
+        setIdReviewState('idle');
+        return;
+      }
+
       const response = await fetch(API_ENDPOINTS.REVIEW_ID, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
