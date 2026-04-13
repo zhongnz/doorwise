@@ -39,9 +39,10 @@ import {
   ActionGrid,
   IdReviewCard,
   DataChecks,
-  IncidentItem,
   CameraPanel,
 } from '../components/dashboard';
+import IncidentLog from '../components/dashboard/IncidentLog';
+import '../components/dashboard/IncidentLog.css';
 import './Dashboard.css';
 
 // Helper functions
@@ -796,16 +797,20 @@ const Dashboard = () => {
           </Card>
 
           <Card className="incident-card">
-            <h4>Recent Incidents</h4>
-            {incidentLog.length > 0 ? (
-              <div className="incident-list">
-                {incidentLog.slice(0, 5).map((incident, idx) => (
-                  <IncidentItem key={`${incident.timestamp}-${idx}`} incident={incident} />
-                ))}
-              </div>
-            ) : (
-              <p className="empty-text">No recent incidents.</p>
-            )}
+            <IncidentLog
+              incidents={incidentLog.map((inc, idx) => ({ ...inc, id: inc.id || `${inc.timestamp}-${idx}` }))}
+              onDeleteIncident={(id) => {
+                setIncidentLog((prev) => {
+                  const next = prev.filter((inc, idx) => (inc.id || `${inc.timestamp}-${idx}`) !== id);
+                  localStorage.setItem(STORAGE_KEYS.incidents, JSON.stringify(next));
+                  return next;
+                });
+              }}
+              onClearAll={() => {
+                setIncidentLog([]);
+                localStorage.removeItem(STORAGE_KEYS.incidents);
+              }}
+            />
           </Card>
         </div>
       </main>

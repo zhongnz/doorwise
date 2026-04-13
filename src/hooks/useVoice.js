@@ -8,8 +8,10 @@ function getWebSocketUrl() {
 export function useVoice(onEvent, options = {}) {
   const [isConnected, setIsConnected] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const [isUserSpeaking, setIsUserSpeaking] = useState(false);
   const [connectionState, setConnectionState] = useState('idle');
   const [lastError, setLastError] = useState(null);
+  const [audioLevel, setAudioLevel] = useState(0);
 
   const audioContextRef = useRef(null);
   const mediaStreamRef = useRef(null);
@@ -25,6 +27,7 @@ export function useVoice(onEvent, options = {}) {
   const speechHangoverRef = useRef(0);
   const preRollFramesRef = useRef([]);
   const warmupFramesRef = useRef(0);
+  const audioLevelSmoothRef = useRef(0);
 
   useEffect(() => {
     pauseInputRef.current = Boolean(options.pauseInput);
@@ -212,6 +215,12 @@ export function useVoice(onEvent, options = {}) {
         }
 
         const rms = Math.sqrt(energy / inputData.length);
+        
+        // Smooth audio level for UI visualization
+        audioLevelSmoothRef.current = (audioLevelSmoothRef.current * 0.7) + (rms * 0.3);
+        const normalizedLevel = Math.min(1, audioLevelSmoothRef.current / 0.15);
+        setAudioLevel(normalizedLevel);
+        
         const pcm16 = new Int16Array(inputData.length);
 
         for (let index = 0; index < inputData.length; index += 1) {
@@ -227,6 +236,7 @@ export function useVoice(onEvent, options = {}) {
 
         if (rms >= openThreshold) {
           speechHangoverRef.current = warmupActive ? 10 : 8;
+          setIsUserSpeaking(true);
         } else if (speechHangoverRef.current > 0) {
           if (rms >= closeThreshold) {
             speechHangoverRef.current = warmupActive ? 10 : 8;
@@ -242,6 +252,7 @@ export function useVoice(onEvent, options = {}) {
           if (warmupFramesRef.current > 0) {
             warmupFramesRef.current -= 1;
           }
+          setIsUserSpeaking(false);
           return;
         }
 
@@ -292,7 +303,9 @@ export function useVoice(onEvent, options = {}) {
     sendText,
     isConnected,
     isSpeaking,
+    isUserSpeaking,
     connectionState,
     lastError,
+    audioLevel,
   };
 }

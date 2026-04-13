@@ -804,3 +804,149 @@ textarea.input {
   height: auto;
   margin: 0 var(--space-4);
 }
+
+/* ===================== */
+/* BUILDING SWITCHER     */
+/* ===================== */
+
+.building-switcher {
+  position: relative;
+  z-index: 50;
+}
+
+.switcher-trigger {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background: var(--bg-glass);
+  border: 1px solid var(--border-glass);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.switcher-trigger:hover {
+  background: var(--bg-elevated);
+  border-color: var(--border-hover);
+}
+
+.switcher-icon {
+  color: var(--accent-blue);
+}
+
+.switcher-label {
+  max-width: 180px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.switcher-chevron {
+  color: var(--text-muted);
+  transition: transform var(--transition-fast);
+}
+
+.switcher-chevron.open {
+  transform: rotate(180deg);
+}
+
+.switcher-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  min-width: 240px;
+  background: var(--bg-card-solid);
+  border: 1px solid var(--border-glass);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 12px 32px -4px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+  animation: fadeIn var(--transition-fast) ease-out;
+}
+
+.switcher-empty {
+  padding: var(--space-4);
+  text-align: center;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.switcher-option {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  padding: var(--space-3);
+  background: transparent;
+  border: none;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+
+.switcher-option:hover {
+  background: var(--bg-elevated);
+}
+
+.switcher-option.active {
+  background: rgba(0, 212, 255, 0.08);
+}
+
+.option-content {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.option-check {
+  color: var(--accent-blue);
+}
+
+.option-label {
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+}
+
+.option-delete {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-1);
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  opacity: 0;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.switcher-option:hover .option-delete {
+  opacity: 1;
+}
+
+.option-delete:hover {
+  background: rgba(239, 68, 68, 0.15);
+  color: var(--status-blocked);
+}
+
+.switcher-add {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-3);
+  background: transparent;
+  border: none;
+  border-top: 1px solid var(--border-glass);
+  color: var(--accent-blue);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+
+.switcher-add:hover {
+  background: rgba(0, 212, 255, 0.05);
+}
