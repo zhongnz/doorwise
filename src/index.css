@@ -3,16 +3,16 @@
 
 :root {
   /* Color System - Dark Theme */
-  --bg-base: #000000;
-  --bg-elevated: #0a0a0a;
-  --bg-surface: #111111;
-  --bg-hover: #1a1a1a;
-  --bg-active: #222222;
+  --bg-base: #09090b;
+  --bg-elevated: #0c0c0e;
+  --bg-surface: #121214;
+  --bg-hover: #1a1a1e;
+  --bg-active: #252529;
   
   /* Accent Colors */
   --accent-primary: #00D4FF;
   --accent-primary-hover: #33DDFF;
-  --accent-primary-muted: rgba(0, 212, 255, 0.15);
+  --accent-primary-muted: rgba(0, 212, 255, 0.12);
   --accent-secondary: #F59E0B;
   --accent-green: #10B981;
   --accent-red: #EF4444;
