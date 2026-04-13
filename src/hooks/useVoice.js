@@ -37,18 +37,39 @@ function useBrowserVoice(onEvent) {
     onEventRef.current = onEvent;
   }, [onEvent]);
 
-  // Speak text using Web Speech Synthesis
-  const speak = useCallback((text) => {
-    if (!text || !window.speechSynthesis) return;
-    
-    // Cancel any ongoing speech
-    window.speechSynthesis.cancel();
-    
+  // Speech queue to prevent overlapping
+  const speechQueueRef = useRef([]);
+  const isSpeakingRef = useRef(false);
+
+  // Process speech queue
+  const processNextSpeech = useCallback(() => {
+    if (isSpeakingRef.current || speechQueueRef.current.length === 0) {
+      return;
+    }
+
+    const text = speechQueueRef.current.shift();
+    if (!text || !window.speechSynthesis) {
+      processNextSpeech();
+      return;
+    }
+
+    isSpeakingRef.current = true;
+    setIsSpeaking(true);
+
+    // Stop recognition while speaking to prevent echo
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.stop();
+      } catch (e) {
+        // Already stopped
+      }
+    }
+
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.rate = 1.0;
     utterance.pitch = 1.0;
     utterance.volume = 1.0;
-    
+
     // Try to use a good voice
     const voices = window.speechSynthesis.getVoices();
     const preferredVoice = voices.find(v => 
@@ -60,23 +81,12 @@ function useBrowserVoice(onEvent) {
     if (preferredVoice) {
       utterance.voice = preferredVoice;
     }
-    
-    // Pause recognition while speaking to prevent echo
-    utterance.onstart = () => {
-      setIsSpeaking(true);
-      // Stop recognition to prevent picking up our own voice
-      if (recognitionRef.current) {
-        try {
-          recognitionRef.current.stop();
-        } catch (e) {
-          // Already stopped
-        }
-      }
-    };
-    
+
     utterance.onend = () => {
+      isSpeakingRef.current = false;
       setIsSpeaking(false);
-      // Resume recognition after speaking
+      
+      // Resume recognition after a delay
       if (isListeningRef.current && recognitionRef.current) {
         setTimeout(() => {
           try {
@@ -84,13 +94,19 @@ function useBrowserVoice(onEvent) {
           } catch (e) {
             // Already started
           }
-        }, 300); // Small delay to avoid catching tail end of speech
+        }, 400);
       }
+      
+      // Process next in queue
+      setTimeout(processNextSpeech, 100);
     };
-    
-    utterance.onerror = () => {
+
+    utterance.onerror = (e) => {
+      console.error('Speech error:', e);
+      isSpeakingRef.current = false;
       setIsSpeaking(false);
-      // Resume recognition on error too
+      
+      // Resume recognition
       if (isListeningRef.current && recognitionRef.current) {
         setTimeout(() => {
           try {
@@ -98,13 +114,25 @@ function useBrowserVoice(onEvent) {
           } catch (e) {
             // Already started
           }
-        }, 300);
+        }, 400);
       }
+      
+      // Process next in queue
+      setTimeout(processNextSpeech, 100);
     };
-    
+
     synthRef.current = utterance;
     window.speechSynthesis.speak(utterance);
   }, []);
+
+  // Speak text using Web Speech Synthesis (queued)
+  const speak = useCallback((text) => {
+    if (!text || !window.speechSynthesis) return;
+    
+    // Add to queue and process
+    speechQueueRef.current.push(text);
+    processNextSpeech();
+  }, [processNextSpeech]);
 
   // Monitor audio levels for visualization
   const startAudioMonitoring = useCallback(async () => {
@@ -170,6 +198,8 @@ function useBrowserVoice(onEvent) {
       debounceTimerRef.current = null;
     }
     pendingTranscriptRef.current = '';
+    speechQueueRef.current = [];
+    isSpeakingRef.current = false;
     if (recognitionRef.current) {
       recognitionRef.current.stop();
       recognitionRef.current = null;

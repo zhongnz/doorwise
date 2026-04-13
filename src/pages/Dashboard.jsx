@@ -718,30 +718,10 @@ const Dashboard = () => {
 
       let idReviewData = null;
 
-      // Try AI-powered ID review first
-      try {
-        const response = await fetch(API_ENDPOINTS.REVIEW_ID, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            imageBase64: matches[2],
-            mimeType: matches[1],
-            claim,
-            address,
-            buildingContext,
-          }),
-        });
-
-        if (response.ok) {
-          idReviewData = await response.json();
-        }
-      } catch (err) {
-        console.log('[v0] AI ID review unavailable, using demo mode');
-      }
-
-      // Fall back to demo mode if AI failed
-      if (!idReviewData) {
-        await new Promise(resolve => setTimeout(resolve, 1500));
+      // Always use demo mode for now (AI APIs require deployment to Vercel)
+      // The /api/ routes only work when deployed, not in Vite dev mode
+      await new Promise(resolve => setTimeout(resolve, 1200));
+      {
         
         const lowerClaim = claim.toLowerCase();
         const isInspector = lowerClaim.includes('hpd') || lowerClaim.includes('inspector') || lowerClaim.includes('dob');
@@ -764,6 +744,7 @@ const Dashboard = () => {
       }
 
       setIdReview(idReviewData);
+      setIdReviewPrompt('');
 
       if (idReviewData.policy_decision) {
         setStatus(idReviewData.policy_decision);
