@@ -64,6 +64,40 @@ export const DECISION_VARIANTS = {
 };
 
 /**
+ * Decision outcomes for incident log display
+ */
+export const DECISION_OUTCOMES = {
+  PROCEED_AFTER_ID_CHECK: {
+    label: 'Verified',
+    color: 'var(--status-verified)',
+  },
+  CALL_TO_CONFIRM: {
+    label: 'Call Required',
+    color: 'var(--status-caution)',
+  },
+  DO_NOT_OPEN: {
+    label: 'Blocked',
+    color: 'var(--status-blocked)',
+  },
+  TRUSTED_ID: {
+    label: 'Trusted',
+    color: 'var(--accent-blue)',
+  },
+  UNKNOWN: {
+    label: 'Unknown',
+    color: 'var(--text-muted)',
+  },
+  LISTENING: {
+    label: 'Pending',
+    color: 'var(--text-muted)',
+  },
+  VERIFYING: {
+    label: 'Checking',
+    color: 'var(--accent-amber)',
+  },
+};
+
+/**
  * ID alignment labels
  */
 export const ID_ALIGNMENT_LABELS = {
